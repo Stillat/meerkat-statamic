@@ -241,7 +241,7 @@ class FilesystemSync
             return null;
         }
 
-        return array_filter($meta, fn($key) => is_string($key), ARRAY_FILTER_USE_KEY);
+        return array_filter($meta, is_string(...), ARRAY_FILTER_USE_KEY);
     }
 
     private function syncComment(string $commentDir, string $threadId, ?int $parentId, int $depth): void

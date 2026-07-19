@@ -374,6 +374,6 @@ class ThreadController extends Controller
             return [];
         }
 
-        return array_filter($value, fn($key) => is_string($key), ARRAY_FILTER_USE_KEY);
+        return array_filter($value, is_string(...), ARRAY_FILTER_USE_KEY);
     }
 }

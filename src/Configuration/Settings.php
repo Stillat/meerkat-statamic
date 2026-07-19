@@ -43,7 +43,7 @@ class Settings
     {
         $values = self::instance()?->all() ?? [];
 
-        return array_filter($values, fn($key) => is_string($key), ARRAY_FILTER_USE_KEY);
+        return array_filter($values, is_string(...), ARRAY_FILTER_USE_KEY);
     }
 
     public static function flush(): void

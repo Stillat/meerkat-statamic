@@ -42,7 +42,7 @@ class CommentParser
             throw new RuntimeException('Mirror frontmatter did not decode to an associative array.');
         }
 
-        $normalizedFrontmatter = array_filter($frontmatter, fn($key) => is_string($key), ARRAY_FILTER_USE_KEY);
+        $normalizedFrontmatter = array_filter($frontmatter, is_string(...), ARRAY_FILTER_USE_KEY);
 
         return [
             'frontmatter' => $normalizedFrontmatter,
