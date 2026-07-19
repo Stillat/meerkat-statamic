@@ -22,6 +22,6 @@ trait CleansCommentData
     {
         $reserved = array_merge(CommentQueryBuilder::COLUMNS, self::RESERVED_DATA_KEYS);
 
-        return array_filter(array_diff_key($data, array_flip($reserved)), fn($key) => ! str_ends_with((string) $key, '___preview'), ARRAY_FILTER_USE_KEY);
+        return array_filter(array_diff_key($data, array_flip($reserved)), fn ($key) => ! str_ends_with((string) $key, '___preview'), ARRAY_FILTER_USE_KEY);
     }
 }
