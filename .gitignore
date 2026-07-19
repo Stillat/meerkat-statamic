@@ -1,6 +1,9 @@
-vendor/*
-src/.idea/*
-/.idea/*
-/.vs/*
-/src/Core/.idea/*
-node_modules/*
+node_modules
+vendor
+composer.lock
+.phpunit.result.cache
+tests/__fixtures__/
+/build/
+resources/dist/hot
+.claude/
+.idea/

@@ -1,0 +1,8 @@
+<?php
+
+/**
+ * @param mixed $route
+ * @param mixed $params
+ * @return string
+ */
+function cp_route($route, $params = []) {}

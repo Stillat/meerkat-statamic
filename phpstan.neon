@@ -1,0 +1,32 @@
+parameters:
+    level: 10
+    paths:
+        - src
+        - tests
+    stubFiles:
+        - phpstan-stubs/statamic-tags.stub
+        - phpstan-stubs/statamic-fields.stub
+        - phpstan-stubs/statamic-data.stub
+        - phpstan-stubs/statamic-functions.stub
+    tmpDir: build/phpstan
+    parallel:
+        maximumNumberOfProcesses: 1
+    ignoreErrors:
+        -
+            identifier: method.notFound
+            message: '#^Call to an undefined method Statamic\\Contracts\\Entries\\Entry::#'
+        -
+            identifier: property.notFound
+            message: '#^Access to an undefined property Statamic\\Contracts\\Entries\\Entry::#'
+        -
+            identifier: method.notFound
+            message: '#^Call to an undefined method Statamic\\Contracts\\Auth\\User::#'
+        -
+            identifier: property.phpDocType
+            path: src/ServiceProvider.php
+        -
+            identifier: method.alreadyNarrowedType
+            path: tests/*
+        -
+            identifier: argument.type
+            message: '#^Parameter \#1 \$view of function view expects view-string\|null, string given\.$#'

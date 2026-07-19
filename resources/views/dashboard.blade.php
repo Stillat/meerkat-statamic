@@ -1,7 +1,15 @@
 @extends('statamic::layout')
-@section('title', trans('meerkat::display.header_comments'))
-@section('wrapper_class', 'max-w-full')
+@section('title', __('meerkat::general.dashboard_title'))
 
 @section('content')
-    <meerkat-comment-thread></meerkat-comment-thread>
+    <meerkat-comments
+        :blueprint='@json($blueprint)'
+        :meta='@json($meta)'
+        :columns="{{ $columns->toJson() }}"
+        :filters="{{ $filters->toJson() }}"
+        :permissions='@json($permissions)'
+        sort-column="{{ $sortColumn }}"
+        sort-direction="{{ $sortDirection }}"
+        action-url="{{ cp_route('meerkat.comments.actions.run') }}"
+    ></meerkat-comments>
 @stop

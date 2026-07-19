@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  php:
+    name: PHP ${{ matrix.php }} / SQLite
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.5']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: dom, libxml, mbstring, pdo_sqlite
+          coverage: none
+      - run: composer install --prefer-dist --no-interaction --no-progress
+      - run: composer validate --strict --no-check-lock
+      - run: composer audit --no-interaction
+      - if: matrix.php == '8.2'
+        run: composer audit:licenses
+      - run: composer phpstan
+      - run: composer rector
+      - run: vendor/bin/pint --test
+      - if: matrix.php == '8.2'
+        run: composer test:parallel
+      - if: matrix.php == '8.5'
+        run: composer test:parallel:random
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: dom, libxml
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: composer install --prefer-dist --no-interaction --no-progress
+      - run: npm ci
+      - run: npm audit --audit-level=high
+      - run: npm test
+      - run: npm run build
+      - run: npm run audit:licenses
+      - name: Verify committed bundles are current
+        run: git diff --exit-code -- resources/dist

@@ -1,0 +1,86 @@
+<?php
+
+namespace Statamic\Tags;
+
+abstract class Tags
+{
+    /** @var Context */
+    public $context;
+
+    /** @var Parameters */
+    public $params;
+}
+
+/** @extends \Illuminate\Support\Collection<int|string, mixed> */
+class ArrayAccessor extends \Illuminate\Support\Collection
+{
+    /** @param int|string|null $key */
+    public function get($key, mixed $fallback = null): mixed {}
+
+    public function has(string $key): bool {}
+
+    /** @param list<string> $keys */
+    public function hasAny(array $keys): bool {}
+
+    public function bool(string $key, bool $fallback = false): bool {}
+
+    public function int(string $key, ?int $fallback = null): int {}
+
+    /** @return array<string, mixed> */
+    public function all(): array {}
+}
+
+class Parameters extends ArrayAccessor
+{
+    /** @param int|string|null $key */
+    public function get($key, mixed $fallback = null): mixed {}
+
+    public function bool(string $key, bool $fallback = false): bool {}
+
+    public function int(string $key, ?int $fallback = 0): int {}
+
+    /** @return array<string, mixed> */
+    public function all(): array {}
+}
+
+class Context extends ArrayAccessor
+{
+}
+
+namespace Statamic\Tags\Concerns;
+
+trait GetsQuerySelectKeys
+{
+    /** @return list<string> */
+    protected function getQuerySelectKeys(mixed $model): array {}
+}
+
+namespace Statamic\Hooks;
+
+/**
+ * @property mixed $query
+ * @property mixed $entry
+ * @property mixed $values
+ * @property mixed $data
+ * @property mixed $model
+ * @property mixed $was_created
+ * @property mixed $parent_comment
+ * @property mixed $visual_id
+ * @property mixed $is_new
+ * @property mixed $id
+ * @property mixed $was_published
+ * @property mixed $thread_id
+ * @property mixed $had_children
+ * @property mixed $is_creating
+ * @property mixed $privileged
+ * @property mixed $comments
+ * @property mixed $sections
+ * @property mixed $fields
+ * @property mixed $comment
+ * @property mixed $is_spam
+ * @property mixed $checked_for_spam
+ * @property bool $should_check
+ * @property mixed $should_delete
+ * @property mixed $should_unpublish
+ */
+class Payload {}

@@ -1,0 +1,32 @@
+title: Meerkat Comment
+fields:
+  -
+    handle: comment
+    field:
+      type: textarea
+      display: 'meerkat::fields.comment'
+      instructions: 'The comment body that appears on the thread.'
+      validate: required
+  -
+    handle: name
+    field:
+      type: text
+      display: 'meerkat::fields.name'
+      instructions: "The visitor's name, shown with their comment."
+      validate: required
+  -
+    handle: email
+    field:
+      type: text
+      input_type: email
+      display: 'meerkat::fields.email'
+      instructions: "The visitor's email address, used for moderation. It can be made optional in Meerkat's configuration if your site doesn't collect guest emails."
+      validate: required|email
+  -
+    handle: website
+    field:
+      type: text
+      input_type: url
+      display: 'meerkat::fields.website'
+      instructions: 'An optional public URL supplied by the visitor.'
+      validate: nullable|url

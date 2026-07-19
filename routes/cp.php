@@ -1,28 +1,34 @@
 <?php
 
+declare(strict_types=1);
+
 use Illuminate\Support\Facades\Route;
-use Stillat\Meerkat\Addon;
+use Stillat\Meerkat\Http\Controllers\CP\CommentActionController;
+use Stillat\Meerkat\Http\Controllers\CP\CommentController;
+use Stillat\Meerkat\Http\Controllers\CP\DashboardController;
 
-Route::group(['prefix' => 'addons'], function () {
-    Route::group(['prefix' => Addon::ROUTE_PREFIX], function () {
-        Route::get('settings', '\Stillat\Meerkat\Http\Controllers\ConfigureController@index')->name('cp.meerkat.settings');
-    });
-});
+Route::prefix('meerkat')->group(function () {
+    Route::get('/', [DashboardController::class, 'show'])->name('meerkat.cp.dashboard');
 
-Route::group(['prefix' => Addon::ROUTE_PREFIX], function () {
-    Route::get('/', '\Stillat\Meerkat\Http\Controllers\DashboardController@index')->name('cp.meerkat.dashboard');
+    Route::prefix('comments')->group(function () {
+        Route::get('filter', [CommentController::class, 'filter'])->name('meerkat.cp.comments.index');
+        Route::get('export', [CommentController::class, 'exportComments'])->name('meerkat.comments.export');
+        Route::get('thread/{threadId}', [CommentController::class, 'threadComments'])->name('meerkat.comments.thread')->where('threadId', '.*');
 
-    Route::get('redirect/{entryId}/{commentId}', '\Stillat\Meerkat\Http\Controllers\DashboardController@redirectToEntry')->name('meerkat.redirect');
-
-    Route::get('blueprint', '\Stillat\Meerkat\Http\Controllers\MeerkatBlueprintController@edit')->name('cp.meerkat.blueprint');
-    Route::patch('blueprint', '\Stillat\Meerkat\Http\Controllers\MeerkatBlueprintController@update')->name('cp.meerkat.blueprint.update');
-
-    Route::group(['prefix' => 'error-logs'], function () {
-        Route::get('/', '\Stillat\Meerkat\Http\Controllers\ErrorLogsController@index');
-        Route::get('logs', '\Stillat\Meerkat\Http\Controllers\ErrorLogsController@getLogs');
-        Route::post('remove-logs', '\Stillat\Meerkat\Http\Controllers\ErrorLogsController@postRemoveAllLogs');
-        Route::post('remove-log-instance', '\Stillat\Meerkat\Http\Controllers\ErrorLogsController@postRemoveLogInstance');
+        Route::post('check-outstanding', [CommentController::class, 'checkOutstandingForSpam'])->name('meerkat.comments.check-outstanding-for-spam');
     });
 
-    Route::get('/{filter}', '\Stillat\Meerkat\Http\Controllers\DashboardController@dashboardWithFilter')->name('cp.meerkat.filteredDashboard');
+    Route::post('actions', [CommentActionController::class, 'run'])->name('meerkat.comments.actions.run');
+    Route::post('actions/list', [CommentActionController::class, 'bulkActions'])->name('meerkat.comments.actions.bulk');
+
+    Route::prefix('comment')->group(function () {
+        Route::get('reply-data/{parent}', [CommentController::class, 'getReplyData'])->name('meerkat.comment.reply-data');
+        Route::post('reply/{parent}', [CommentController::class, 'submitReply'])->name('meerkat.comment.reply');
+
+        Route::get('{id}', [CommentController::class, 'getCommentValues'])->name('meerkat.comment.get');
+        Route::get('{id}/history', [CommentController::class, 'getCommentHistory'])->name('meerkat.comment.history');
+        Route::get('{id}/revisions', [CommentController::class, 'getCommentRevisions'])->name('meerkat.comment.revisions');
+        Route::post('{id}/revisions/{revisionNumber}/restore', [CommentController::class, 'restoreCommentRevision'])->name('meerkat.comment.revision.restore');
+        Route::put('{id}', [CommentController::class, 'updateComment'])->name('meerkat.comment.update');
+    });
 });

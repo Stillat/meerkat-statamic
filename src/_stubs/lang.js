@@ -1,1 +1,0 @@
-(function () {/* Provides language patches for the @addon addon. */var _statamic = window['Statamic'];_statamic.booting(function() {var _cst = _statamic.$config.get('translations');/*patches*/_statamic.$config.set('translations', _cst);})})();
