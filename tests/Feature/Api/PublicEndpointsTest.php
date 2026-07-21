@@ -170,6 +170,20 @@ class PublicEndpointsTest extends TestCase
     }
 
     #[Test]
+    public function children_endpoint_prunes_replies_under_a_hidden_parent(): void
+    {
+        $root = CommentFactory::new()->threadId('api-children-orphan')->published()->create();
+        CommentFactory::new()->replyTo($root)->published()->create();
+
+        $root->is_published = false;
+        $root->save();
+
+        $this->getJson('/api/meerkat/threads/api-children-orphan/children/'.$root->id)
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+    }
+
+    #[Test]
     public function stats_return_real_metrics_without_materializing_unknown_threads(): void
     {
         $this->seedThread('api-stats', 3);

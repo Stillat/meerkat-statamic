@@ -87,6 +87,41 @@ class CpToMirrorSyncTest extends TestCase
         $this->assertArrayNotHasKey('authenticated_user', $this->frontmatter($guest));
     }
 
+    #[Test]
+    public function cp_inline_replies_write_the_nested_mirror_file_without_replaying_hooks(): void
+    {
+        $this->resetStatamicHooks();
+        $parent = $this->createComment([
+            'thread_id' => 'thread-cp-reply',
+            'timestamp_id' => '1700000030',
+        ]);
+        $this->makeAdmin('cp-mirror-admin');
+
+        $savingRuns = 0;
+        Comment::hook('saving', function ($payload) use (&$savingRuns) {
+            $savingRuns++;
+
+            return $payload;
+        });
+
+        $this->postJson(cp_route('meerkat.comment.reply', ['parent' => $parent->id]), [
+            'comment' => 'nested mirror reply',
+            'name' => 'Admin',
+            'email' => 'admin@example.com',
+        ])->assertSuccessful();
+
+        $reply = Comment::query()->where('parent_id', $parent->id)->firstOrFail();
+        $file = Mirror::pathResolver()->fileFor($reply);
+
+        $this->assertStringContainsString('thread-cp-reply/1700000030/replies/', str_replace('\\', '/', $file));
+        $this->assertTrue(File::exists($file));
+
+        $parsed = CommentParser::parse(File::get($file));
+        $this->assertSame('nested mirror reply', trim($parsed['body']));
+        $this->assertSame($parent->id.'.'.$reply->id, $reply->path);
+        $this->assertSame(1, $savingRuns);
+    }
+
     /** @return array<string, mixed> */
     private function frontmatter(Comment $comment): array
     {

@@ -35,6 +35,26 @@ class FilesystemSyncFidelityTest extends TestCase
     }
 
     #[Test]
+    public function compatibility_fields_map_to_columns_without_duplicating_into_template_data(): void
+    {
+        (new FilesystemSync($this->fixtureRoot()))->run();
+        $comment = Comment::query()->where('timestamp_id', '1779039555')->firstOrFail();
+        $data = (array) $comment->comment_data;
+
+        $this->assertSame('approved', $comment->moderation_status);
+        $this->assertSame('http://meerkatmigrator.test/would-you-rather', $data['page_url']);
+
+        $keys = [
+            'ham', 'is_ham', 'checked_for_spam', 'moderation_status', 'moderation_reason',
+            'moderation_notes', 'moderated_by', 'moderated_at', 'trashed', 'trashed_at',
+        ];
+
+        foreach ($keys as $key) {
+            $this->assertArrayNotHasKey($key, $data);
+        }
+    }
+
+    #[Test]
     public function sync_materializes_reply_counts_from_the_imported_hierarchy(): void
     {
         (new FilesystemSync($this->fixtureRoot()))->run();

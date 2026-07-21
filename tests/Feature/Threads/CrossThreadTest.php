@@ -48,11 +48,12 @@ class CrossThreadTest extends TestCase
     }
 
     #[Test]
-    public function wildcard_count_is_explicitly_unsupported(): void
+    public function wildcard_count_aggregates_public_comments_across_threads(): void
     {
         $this->comment('count-thread', 'Count me');
+        $this->comment('other-count-thread', 'Me too');
 
-        $this->assertSame('0', trim($this->parseAntlers('{{ meerkat:comment_count thread="*" }}')));
+        $this->assertSame('2', trim($this->parseAntlers('{{ meerkat:comment_count thread="*" }}')));
     }
 
     private function comment(string $thread, string $text, string $collection = 'blog'): void

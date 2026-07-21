@@ -14,13 +14,13 @@ use Stillat\Meerkat\Tests\TestCase;
 class TombstonesTest extends TestCase
 {
     #[Test]
-    public function tombstoning_preserves_rows_children_reply_counts_and_idempotency(): void
+    public function tombstoning_preserves_rows_and_children_updates_reply_counts_and_stays_idempotent(): void
     {
         [$parent, $childA, $childB] = $this->makeTree('tombstone-invariants');
         $this->assertSame(2, $this->requireValue($parent->fresh())->replies_count);
 
         Comments::deleteComment($childA->id);
-        $this->assertSame(2, $this->requireValue($parent->fresh())->replies_count);
+        $this->assertSame(1, $this->requireValue($parent->fresh())->replies_count);
 
         $this->assertTrue(Comments::deleteComment($parent->id, 'off topic'));
         $firstRemovedAt = $this->requireValue($parent->fresh())->removed_at;
@@ -104,15 +104,17 @@ class TombstonesTest extends TestCase
         $this->assertTrue($tombstone['is_removed']);
         $this->assertSame('removed reason', $tombstone['removed_reason']);
 
-        foreach ([
-            '?include_tombstones=true&include_tombstone_replies=true',
-            '?include_tombstone_replies=true',
-        ] as $query) {
-            $ids = $this->apiIds('api-tombstone-flags', $query);
-            $this->assertContains($parent->id, $ids);
-            $this->assertContains($childA->id, $ids);
-            $this->assertContains($childB->id, $ids);
-        }
+        $ids = $this->apiIds('api-tombstone-flags', '?include_tombstones=true&include_tombstone_replies=true');
+        $this->assertContains($parent->id, $ids);
+        $this->assertContains($childA->id, $ids);
+        $this->assertContains($childB->id, $ids);
+
+        // Replies-only leaves the tombstone roots hidden; their descendants are
+        // no longer force-hidden but cannot render beneath a hidden root.
+        $repliesOnly = $this->apiIds('api-tombstone-flags', '?include_tombstone_replies=true');
+        $this->assertNotContains($parent->id, $repliesOnly);
+        $this->assertNotContains($childA->id, $repliesOnly);
+        $this->assertNotContains($childB->id, $repliesOnly);
     }
 
     #[Test]

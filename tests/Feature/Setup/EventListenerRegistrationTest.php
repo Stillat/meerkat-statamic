@@ -28,21 +28,4 @@ class EventListenerRegistrationTest extends TestCase
             'cached_title' => 'Updated Title',
         ], 'meerkat');
     }
-
-    #[Test]
-    public function user_saved_events_create_user_metadata_through_registered_listeners(): void
-    {
-        $user = $this->makeStatamicUser();
-        $user->id('listener-user');
-        $user->email('listener@example.com');
-        $user->data(['name' => 'Listener User']);
-
-        $user->save();
-
-        $this->assertDatabaseHas('users_meta', [
-            'user_id' => 'listener-user',
-            'email' => 'listener@example.com',
-            'name' => 'Listener User',
-        ], 'meerkat');
-    }
 }

@@ -49,7 +49,7 @@ class RepliesCountConsistencyTest extends TestCase
     }
 
     #[Test]
-    public function tombstoning_individual_bulk_and_middle_nodes_preserves_structural_reply_counts(): void
+    public function tombstoning_individual_bulk_and_middle_nodes_decrements_only_their_direct_parent(): void
     {
         $root = CommentFactory::new()->threadId('tombstone-count')->depth(0)->published()->create();
         $middle = CommentFactory::new()->threadId('tombstone-count')->parent($root->id)->depth(1)->published()->create();
@@ -65,7 +65,7 @@ class RepliesCountConsistencyTest extends TestCase
         Comments::deleteComment($middle->id);
         Comments::bulkDelete($this->requireIntegerList($siblings->pluck('id')->all()));
 
-        $this->assertSame($rootCount, $this->requireValue($root->fresh())->replies_count);
+        $this->assertSame($rootCount - 3, $this->requireValue($root->fresh())->replies_count);
         $this->assertSame($middleCount, $this->requireValue($middle->fresh())->replies_count);
     }
 

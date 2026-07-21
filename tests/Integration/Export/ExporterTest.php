@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Stillat\Meerkat\Tests\Integration\Export;
 
 use PHPUnit\Framework\Attributes\Test;
+use Stillat\Meerkat\Database\Models\Comment;
 use Stillat\Meerkat\Exporters\CsvExporter;
 use Stillat\Meerkat\Exporters\JsonExporter;
 use Stillat\Meerkat\Testing\Factories\CommentFactory;
@@ -123,6 +124,40 @@ class ExporterTest extends TestCase
         $headers = $rows[0];
         $this->assertContains('website', $headers);
         $this->assertSame('https://example.com', $rows[1][array_search('website', $headers, true)]);
+    }
+
+    #[Test]
+    public function csv_export_streams_lazy_queries_with_blueprint_derived_columns(): void
+    {
+        CommentFactory::new()
+            ->threadId('csv-lazy')
+            ->author('First Author', 'first@example.com')
+            ->text('First body')
+            ->data(['comment' => 'First body', 'website' => 'https://one.example.com'])
+            ->published()
+            ->create();
+        CommentFactory::new()
+            ->threadId('csv-lazy')
+            ->author('Second Author', 'second@example.com')
+            ->text('Second body')
+            ->data(['comment' => 'Second body'])
+            ->published()
+            ->create();
+
+        $output = (new CsvExporter)
+            ->setConfig([])
+            ->setComments(Comment::query()->orderBy('comments.id')->lazy())
+            ->export();
+
+        $rows = array_map(str_getcsv(...), explode("\n", trim($output)));
+        $headers = $rows[0];
+
+        $this->assertSame(['comment', 'name', 'email', 'website'], array_slice($headers, 20));
+        $this->assertCount(3, $rows);
+        $this->assertSame('First body', $rows[1][array_search('comment_text', $headers, true)]);
+        $this->assertSame('Second body', $rows[2][array_search('comment_text', $headers, true)]);
+        $this->assertSame('https://one.example.com', $rows[1][array_search('website', $headers, true)]);
+        $this->assertSame('', $rows[2][array_search('website', $headers, true)]);
     }
 
     #[Test]

@@ -31,13 +31,10 @@ class GuardsTest extends TestCase
     {
         Settings::set('iplist.block', ['192.0.2.1']);
         $entry = $this->createEntry(['id' => 'ip-filter']);
-        $comment = CommentFactory::new()->create();
         $guard = new IpFilterGuard;
 
-        request()->server->set('REMOTE_ADDR', '192.0.2.1');
-        $this->assertTrue($guard->isSpam($entry, $comment));
-        request()->server->set('REMOTE_ADDR', '203.0.113.5');
-        $this->assertFalse($guard->isSpam($entry, $comment));
+        $this->assertTrue($guard->isSpam($entry, CommentFactory::new()->requestMetadata(ip: '192.0.2.1')->create()));
+        $this->assertFalse($guard->isSpam($entry, CommentFactory::new()->requestMetadata(ip: '203.0.113.5')->create()));
     }
 
     #[Test]
