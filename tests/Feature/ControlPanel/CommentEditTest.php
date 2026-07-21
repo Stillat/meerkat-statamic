@@ -60,6 +60,24 @@ class CommentEditTest extends TestCase
         $this->assertSame('pending', $this->requireValue($pending->fresh())->moderation_status);
     }
 
+    #[Test]
+    public function setting_the_spam_status_flags_the_comment_as_spam(): void
+    {
+        $this->actAsAdmin();
+        $comment = CommentFactory::new()->threadId('cp-status')->published()->create();
+
+        $this->putJson(cp_route('meerkat.comment.update', ['id' => $comment->id]), $this->payload($comment, [
+            'is_published' => true,
+            'moderation_status' => 'spam',
+        ]))->assertSuccessful();
+
+        $fresh = $this->requireValue($comment->fresh());
+        $this->assertTrue($fresh->is_spam);
+        $this->assertFalse($fresh->is_ham);
+        $this->assertTrue($fresh->checked_for_spam);
+        $this->assertFalse($fresh->is_published);
+    }
+
     private function actAsAdmin(): void
     {
         $this->createStatamicCollection('blog', 'Blog');

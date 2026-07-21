@@ -26,7 +26,7 @@ class HealthCheckCommandTest extends TestCase
         DB::connection('meerkat')->statement('DROP TABLE meerkat_comments');
 
         $this->pendingArtisan('meerkat:health')
-            ->expectsOutputToContain('Meerkat health check failed.')
+            ->expectsOutputToContain('Meerkat is not fully installed.')
             ->assertExitCode(1);
     }
 
@@ -40,7 +40,7 @@ class HealthCheckCommandTest extends TestCase
 
         $this->pendingArtisan('meerkat:health')
             ->expectsOutputToContain('comments.is_removed')
-            ->expectsOutputToContain('Meerkat health check failed.')
+            ->expectsOutputToContain('Meerkat is not fully installed.')
             ->assertExitCode(1);
     }
 
@@ -54,7 +54,32 @@ class HealthCheckCommandTest extends TestCase
 
         $this->pendingArtisan('meerkat:health')
             ->expectsOutputToContain('comments.meerkat_comments_thread_timestamp_unique')
-            ->expectsOutputToContain('Meerkat health check failed.')
+            ->expectsOutputToContain('Meerkat is not fully installed.')
+            ->assertExitCode(1);
+    }
+
+    #[Test]
+    public function it_reports_a_bad_mirror_path_as_a_configuration_failure(): void
+    {
+        $file = $this->temporaryFilePath('meerkat-mirror-file-');
+        file_put_contents($file, 'not a directory');
+
+        config()->set('meerkat.mirror.enabled', true);
+        config()->set('meerkat.mirror.path', $file);
+
+        $this->pendingArtisan('meerkat:health')
+            ->expectsOutputToContain('exists but is not a directory')
+            ->expectsOutputToContain('some configuration checks failed')
+            ->assertExitCode(1);
+    }
+
+    #[Test]
+    public function it_reports_an_undefined_queue_connection(): void
+    {
+        config()->set('meerkat.jobs.connection', 'does-not-exist');
+
+        $this->pendingArtisan('meerkat:health')
+            ->expectsOutputToContain('is not defined in config/queue.php')
             ->assertExitCode(1);
     }
 }

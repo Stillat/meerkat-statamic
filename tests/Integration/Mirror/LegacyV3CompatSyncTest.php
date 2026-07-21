@@ -270,6 +270,30 @@ class LegacyV3CompatSyncTest extends TestCase
         $this->assertSame('root C', $this->findComment('collision-thread', '1700000102')->comment_text);
     }
 
+    #[Test]
+    public function a_single_unimportable_file_is_skipped_without_aborting_the_run(): void
+    {
+        $this->writeComment('resilient-thread/1700000010', [
+            'id' => '1700000010', 'published' => true,
+        ], body: 'good comment one');
+
+        // A raw invalid UTF-8 byte in a custom field survives YAML parsing but
+        // fails JSON encoding when comment_data is persisted.
+        $dir = $this->mirrorRoot.'/resilient-thread/1700000020';
+        File::ensureDirectoryExists($dir);
+        File::put($dir.'/comment.md', "---\nid: '1700000020'\npublished: true\nbio: bad\xFFbyte\n---\nbad comment\n");
+
+        $this->writeComment('resilient-thread/1700000030', [
+            'id' => '1700000030', 'published' => true,
+        ], body: 'good comment two');
+
+        $result = $this->sync();
+
+        $this->assertNotEmpty($result['errors']);
+        $this->assertSame('good comment one', $this->findComment('resilient-thread', '1700000010')->comment_text);
+        $this->assertSame('good comment two', $this->findComment('resilient-thread', '1700000030')->comment_text);
+    }
+
     /** @return array{stats: array<string, int>, errors: list<array{file: string, error: string}>} */
     private function sync(): array
     {

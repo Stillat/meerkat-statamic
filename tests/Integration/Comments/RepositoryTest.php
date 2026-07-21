@@ -56,4 +56,26 @@ class RepositoryTest extends TestCase
         $this->assertSame($parent->id, $reply->parent_id);
         $this->assertSame($parent->thread_id, $reply->thread_id);
     }
+
+    #[Test]
+    public function a_reply_inherits_the_site_of_the_thread_entry_not_the_parent_comment(): void
+    {
+        $entry = $this->createEntry(['id' => 'reply-site-entry', 'title' => 'Reply Site']);
+        $parent = CommentFactory::new()
+            ->threadId($entry->id())
+            ->text('Parent')
+            ->create(['site' => 'a-different-site']);
+
+        $reply = $this->repository->inReplyTo($parent);
+
+        $this->assertSame($this->entryHandle($entry->site()), $reply->site);
+        $this->assertNotSame('a-different-site', $reply->site);
+    }
+
+    private function entryHandle(object $value): string
+    {
+        $handle = method_exists($value, 'handle') ? $value->handle() : null;
+
+        return is_string($handle) ? $handle : '';
+    }
 }
