@@ -99,6 +99,8 @@
             if (form.length > 0) {
                 let meerkatReplyForm = form[0].cloneNode(true);
 
+                this.prepareClonedForm(meerkatReplyForm);
+
                 if (meerkatReplyForm.innerHTML.indexOf('h-captcha') > -1) {
                     state.IsHCaptchaInUse = true;
                     state.IsGoogleRecaptchaInUse = false;
@@ -162,6 +164,40 @@
             replyInput.name = 'ids';
 
             return replyInput;
+        },
+        // When the reply form is cloned from the main comment form, strip the
+        // duplicated element ids (which break label associations) and clear
+        // author-entered values so the reply starts blank. Hidden fields such
+        // as the CSRF token and signed context are preserved.
+        prepareClonedForm: function (form) {
+            form.querySelectorAll('input, textarea, select').forEach(function (control) {
+                control.removeAttribute('id');
+
+                let type = (control.getAttribute('type') || '').toLowerCase();
+
+                if (control.tagName === 'TEXTAREA' || ['text', 'email', 'url', 'search', 'tel'].indexOf(type) > -1) {
+                    control.value = '';
+                }
+            });
+
+            form.querySelectorAll('label[for]').forEach(function (label) {
+                label.removeAttribute('for');
+            });
+        },
+        // Blocks a second submission of the same form before the page
+        // navigates, preventing accidental double-posts.
+        guardAgainstDoubleSubmit: function (form) {
+            let submitting = false;
+
+            form.addEventListener('submit', function (event) {
+                if (submitting) {
+                    event.preventDefault();
+
+                    return;
+                }
+
+                submitting = true;
+            });
         },
         renderCaptcha: function (state) {
             if (state.IsGoogleRecaptchaInUse && state.CaptchaElementId !== null) {
@@ -257,9 +293,12 @@
 
                     _this.data.ReplyForm = replyForm;
 
-                    let replyingTo = event.target.getAttribute('data-meerkat-reply-to');
+                    // Read from the bound link (el), not event.target, which
+                    // may be a child element (icon/span) inside the link.
+                    let replyingTo = el.getAttribute('data-meerkat-reply-to');
 
                     replyForm.appendChild(_this.makeReplyInput(replyingTo));
+                    _this.guardAgainstDoubleSubmit(replyForm);
                     replyForm.addEventListener('submit', _this.data.Extend.submit, false);
 
                     if (typeof _this.data.Extend.replyOpen !== 'undefined' &&
@@ -280,6 +319,12 @@
             this.data.Extend = MeerkatReply;
             this.getReplyForm();
             this.addEventListeners();
+
+            let _this = this;
+            document.querySelectorAll('[data-meerkat-form="comment-form"]').forEach(function (form) {
+                _this.guardAgainstDoubleSubmit(form);
+            });
+
             window.MeerkatReply = this.data.Extend;
         }
     };

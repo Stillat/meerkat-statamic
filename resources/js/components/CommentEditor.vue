@@ -22,6 +22,7 @@ const emit = defineEmits(['saved', 'saving']);
 
 const container = useTemplateRef('container');
 const loading = ref(true);
+const loadFailed = ref(false);
 const meta = ref(clone(props.initialMeta));
 const values = ref({});
 const errors = ref({});
@@ -50,6 +51,7 @@ watch(saving, (busy) => {
 
 function fetch() {
     loading.value = true;
+    loadFailed.value = false;
 
     axios
         .get(fetchUrl.value)
@@ -60,12 +62,15 @@ function fetch() {
         })
         .catch((err) => {
             Statamic.$toast.error(err.response?.data?.message || err?.message || __('meerkat::errors.generic_failure'));
+            loadFailed.value = true;
             loading.value = false;
         });
 }
 
 function save() {
-    if (saving.value || loading.value) return;
+    // Never save against an empty form that failed to load; doing so would
+    // blank the comment.
+    if (saving.value || loading.value || loadFailed.value) return;
 
     const hookPayload = {
         comment: props.comment,
@@ -113,6 +118,11 @@ defineExpose({ save });
     <div>
         <div v-if="loading" class="flex items-center justify-center py-16 text-gray-500">
             <Icon name="loading" />
+        </div>
+
+        <div v-else-if="loadFailed" class="flex flex-col items-center justify-center py-16 text-gray-500">
+            <p class="mb-4">{{ __('meerkat::errors.editor_load_failed') }}</p>
+            <button type="button" class="btn" @click="fetch">{{ __('Retry') }}</button>
         </div>
 
         <PublishContainer

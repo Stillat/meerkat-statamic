@@ -331,7 +331,16 @@ class FilesystemSync
             return;
         }
 
-        $row = $this->hydrate($parsed['frontmatter'], $parsed['body'], $threadId, $parentId, $depth, basename($commentDir));
+        try {
+            $row = $this->hydrate($parsed['frontmatter'], $parsed['body'], $threadId, $parentId, $depth, basename($commentDir));
+        } catch (\Throwable $e) {
+            // One malformed file (e.g. non-UTF8 legacy data failing JSON
+            // encoding) must not abort the rest of the import.
+            $this->stats['files_skipped']++;
+            $this->errors[] = ['file' => $file, 'error' => $e->getMessage()];
+
+            return;
+        }
 
         if (! $row instanceof Comment) {
             return;

@@ -467,6 +467,12 @@ class CommentController extends CpController
             $comment->is_published = false;
         }
 
+        if ($comment->moderation_status === 'spam') {
+            $comment->is_spam = true;
+            $comment->is_ham = false;
+            $comment->checked_for_spam = true;
+        }
+
         if ($comment->moderation_status === 'rejected') {
             $comment->is_spam = false;
             $comment->is_ham = false;

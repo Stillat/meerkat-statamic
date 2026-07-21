@@ -6,6 +6,7 @@ namespace Stillat\Meerkat\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Statamic\Console\RunsInPlease;
 use Stillat\Meerkat\Database\Models\Comment;
 use Stillat\Meerkat\Mirror\FilesystemSync;
@@ -24,6 +25,14 @@ class Sync extends Command
 
     public function handle(ThreadMetricsManager $metrics): int
     {
+        $connection = (new Comment)->getConnectionName();
+
+        if (! Schema::connection($connection)->hasTable('comments')) {
+            $this->components->error("Meerkat's tables do not exist yet. Run `php artisan meerkat:install` first.");
+
+            return self::FAILURE;
+        }
+
         $path = $this->option('path');
 
         if (! is_string($path) || $path === '') {

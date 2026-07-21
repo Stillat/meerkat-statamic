@@ -16,7 +16,7 @@ export default {
                 this.$toast.error(message);
                 this.$reveal?.invalid();
             } else if (e.response) {
-                this.$toast.error(e.response.data.message);
+                this.$toast.error(e.response.data?.message || __('meerkat::errors.generic_failure'));
             } else {
                 this.$toast.error(e?.message || __('meerkat::errors.generic_failure'));
             }

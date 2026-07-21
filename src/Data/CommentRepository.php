@@ -486,16 +486,16 @@ class CommentRepository implements CommentRepositoryContract
 
         /** @var Comment $comment */
         [$entry, $comment] = $details;
+        $threadId = $comment->thread_id;
 
         try {
+            // The spam determination can call an external service, so it runs
+            // without a row lock. The verdict is then persisted under a lock so
+            // concurrent checks serialize and cannot double-adjust replies_count.
             $spam = app(CommentSpamCheck::class)->resolve($entry, $comment);
             $entry = $spam['entry'];
             $comment = $spam['comment'];
-            $isSpam = $spam['is_spam'];
-
-            $comment->is_spam = $isSpam;
-            $comment->checked_for_spam = true;
-            $comment->stampModeration($isSpam ? 'spam' : ($comment->is_published ? 'approved' : 'pending'));
+            $isSpam = (bool) $spam['is_spam'];
 
             $payload = $this->runHooksWith('after-spam-determined', [
                 'comment' => $comment,
@@ -506,62 +506,83 @@ class CommentRepository implements CommentRepositoryContract
 
             $hookSpam = $payload instanceof Payload ? $payload->is_spam : null;
             $hookChecked = $payload instanceof Payload ? $payload->checked_for_spam : null;
-            $comment->is_spam = is_bool($hookSpam) ? $hookSpam : $isSpam;
-            $comment->checked_for_spam = is_bool($hookChecked) ? $hookChecked : true;
-            $comment->moderation_status = $comment->is_spam ? 'spam' : ($comment->is_published ? 'approved' : 'pending');
+            $isSpam = is_bool($hookSpam) ? $hookSpam : $isSpam;
+            $checked = is_bool($hookChecked) ? $hookChecked : true;
 
-            if ($comment->is_spam) {
-                $shouldDelete = $this->autoDeleteSpam();
-                $shouldUnpublish = $this->autoUnpublishSpamComments();
+            $this->withLockedComment($id, function (Comment $comment) use ($isSpam, $checked): bool {
+                $comment->is_spam = $isSpam;
+                $comment->checked_for_spam = $checked;
+                $comment->moderation_status = $isSpam ? 'spam' : ($comment->is_published ? 'approved' : 'pending');
 
-                $actionPayload = $this->runHooksWith('spam-action-decided', [
-                    'comment' => $comment,
-                    'is_spam' => $comment->is_spam,
-                    'should_delete' => $shouldDelete,
-                    'should_unpublish' => $shouldUnpublish,
-                ]);
-
-                $shouldDelete = $actionPayload instanceof Payload && $actionPayload->should_delete === true;
-                $shouldUnpublish = $actionPayload instanceof Payload && $actionPayload->should_unpublish === true;
-
-                if ($shouldDelete) {
+                if ($isSpam && $this->resolveSpamAction($comment) === 'delete') {
                     $this->saveWithoutCommentSavedEvent($comment);
                     $comment->delete();
                     $this->audit()->log($comment, 'auto_deleted_spam', []);
-                } elseif ($shouldUnpublish) {
-                    $comment->is_published = false;
-                    $comment->moderation_status = 'spam';
+
+                    return true;
                 }
-            }
 
-            if (! $comment->trashed()) {
                 $this->saveWithoutCommentSavedEvent($comment);
+                $this->audit()->log($comment, 'spam_checked', ['is_spam' => $isSpam]);
 
-                $this->audit()->log($comment, 'spam_checked', [
-                    'is_spam' => $comment->is_spam,
-                ]);
-            }
+                return true;
+            });
 
-            $this->invalidateThreadCache($comment->thread_id);
-            $this->metrics()->recalculateThread($comment->thread_id);
+            $this->invalidateThreadCache($threadId);
+            $this->metrics()->recalculateThread($threadId);
         } catch (Throwable $throwable) {
             Log::warning('Meerkat: Checking for spam failed.', [
-                'exception' => $throwable,
-                'comment_id' => $comment->id,
-                'thread_id' => $comment->thread_id,
+                'exception' => $throwable->getMessage(),
+                'comment_id' => $id,
+                'thread_id' => $threadId,
             ]);
 
-            if (! $comment->trashed() && $comment->is_published && $this->unpublishOnGuardFailure()) {
-                $comment->is_published = false;
-                $comment->moderation_status = 'pending';
+            if ($this->unpublishOnGuardFailure()) {
+                $this->withLockedComment($id, function (Comment $comment): bool {
+                    if ($comment->trashed() || ! $comment->is_published) {
+                        return false;
+                    }
 
-                if (! $comment->save()) {
-                    Log::error('Meerkat: Failed to unpublish comment after a spam-guard failure.', [
-                        'comment_id' => $comment->id,
-                    ]);
-                }
+                    $comment->is_published = false;
+                    $comment->moderation_status = 'pending';
+
+                    return $this->saveWithoutCommentSavedEvent($comment);
+                });
+
+                $this->invalidateThreadCache($threadId);
+                $this->metrics()->recalculateThread($threadId);
             }
         }
+    }
+
+    /**
+     * Resolves what to do with a spam comment: 'delete', 'unpublish', or
+     * 'none'. For 'unpublish' the comment is left unpublished in place.
+     */
+    private function resolveSpamAction(Comment $comment): string
+    {
+        $shouldDelete = $this->autoDeleteSpam();
+        $shouldUnpublish = $this->autoUnpublishSpamComments();
+
+        $payload = $this->runHooksWith('spam-action-decided', [
+            'comment' => $comment,
+            'is_spam' => true,
+            'should_delete' => $shouldDelete,
+            'should_unpublish' => $shouldUnpublish,
+        ]);
+
+        if ($payload instanceof Payload && $payload->should_delete === true) {
+            return 'delete';
+        }
+
+        if ($payload instanceof Payload && $payload->should_unpublish === true) {
+            $comment->is_published = false;
+            $comment->moderation_status = 'spam';
+
+            return 'unpublish';
+        }
+
+        return 'none';
     }
 
     public function checkOutstandingForSpam(): void
@@ -583,8 +604,14 @@ class CommentRepository implements CommentRepositoryContract
 
         $comment->parent_id = $parent->id;
         $comment->thread_id = $parent->thread_id;
-        $comment->site = $parent->site;
-        $comment->collection = $parent->collection;
+
+        // Inherit the site and collection from the thread's entry so replies
+        // stay consistent with the canonical thread, even on shared threads.
+        $entry = app(ThreadResolver::class)->resolveEntry($parent->thread_id)
+            ?? EntryApi::find($parent->thread_id);
+        $comment->site = ($entry instanceof Entry ? $this->entryHandle($entry->site()) : null) ?? $parent->site;
+        $comment->collection = ($entry instanceof Entry ? $this->entryHandle($entry->collection()) : null) ?? $parent->collection;
+
         $comment->is_published = true;
         $comment->is_spam = $comment->is_ham = false;
         $comment->depth = $parent->depth + 1;

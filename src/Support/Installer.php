@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 use Statamic\Facades\Blueprint;
+use Stillat\Meerkat\Mirror\Mirror;
 use Throwable;
 
 class Installer
@@ -78,7 +79,51 @@ class Installer
             'tables' => self::checkTables(),
             'columns' => self::checkColumns(),
             'indexes' => self::checkIndexes(),
+            'mirror' => self::checkMirror(),
+            'queue' => self::checkQueue(),
         ];
+    }
+
+    public static function checkMirror(): string|true
+    {
+        if (config('meerkat.mirror.enabled', true) !== true) {
+            return true;
+        }
+
+        $root = Mirror::root();
+
+        if (file_exists($root) && ! is_dir($root)) {
+            return "Mirror path [{$root}] exists but is not a directory";
+        }
+
+        if (is_dir($root)) {
+            return is_writable($root) ? true : "Mirror path [{$root}] is not writable";
+        }
+
+        // The mirror writer creates missing directories recursively, so the
+        // nearest existing ancestor is what must be writable.
+        $path = dirname($root);
+
+        while (! is_dir($path) && dirname($path) !== $path) {
+            $path = dirname($path);
+        }
+
+        return is_dir($path) && is_writable($path)
+            ? true
+            : "Mirror path [{$root}] cannot be created; no writable parent directory exists";
+    }
+
+    public static function checkQueue(): string|true
+    {
+        $connection = config('meerkat.jobs.connection');
+
+        if (! is_string($connection) || $connection === '') {
+            return 'meerkat.jobs.connection is not set';
+        }
+
+        return config("queue.connections.{$connection}") !== null
+            ? true
+            : "Queue connection [{$connection}] is not defined in config/queue.php";
     }
 
     public static function connectionName(): string
