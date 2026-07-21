@@ -6,13 +6,14 @@ namespace Stillat\Meerkat\Actions;
 
 use Illuminate\Support\Collection;
 use Statamic\Actions\Action;
+use Stillat\Meerkat\Actions\Concerns\AuthorizesCommentActions;
 use Stillat\Meerkat\Actions\Concerns\ReportsBulkOutcome;
 use Stillat\Meerkat\Contracts\CommentRepository;
 use Stillat\Meerkat\Database\Models\Comment;
 
 class DeleteComment extends Action
 {
-    use ReportsBulkOutcome;
+    use AuthorizesCommentActions, ReportsBulkOutcome;
 
     /** @var bool */
     protected $dangerous = true;
@@ -38,20 +39,9 @@ class DeleteComment extends Action
         return __('meerkat::general.delete_comment_button');
     }
 
-    /** @param Collection<int, Comment> $items */
-    public function visibleToBulk($items): bool
+    protected function permission(): string
     {
-        return auth()->user()?->can('delete comments') ?? false;
-    }
-
-    /** @param mixed $item */
-    public function visibleTo($item): bool
-    {
-        if (! $item instanceof Comment) {
-            return false;
-        }
-
-        return (bool) auth()->user()?->can('delete comments');
+        return 'delete comments';
     }
 
     /**

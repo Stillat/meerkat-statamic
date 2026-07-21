@@ -7,9 +7,12 @@ namespace Stillat\Meerkat\Tags;
 use Illuminate\Support\ViewErrorBag;
 use Statamic\Contracts\Entries\Entry;
 use Statamic\Facades\Entry as EntryFacade;
+use Statamic\Facades\Site as SiteFacade;
 use Statamic\Facades\User as UserFacade;
 use Statamic\Fields\Value;
+use Statamic\Sites\Site;
 use Statamic\Tags\Tags;
+use Stillat\Meerkat\Comments\PublicCommentData;
 use Stillat\Meerkat\Contracts\CommentRepository;
 use Stillat\Meerkat\Database\Models\Comment;
 use Stillat\Meerkat\Facades\Comments;
@@ -151,32 +154,69 @@ class Meerkat extends Tags
 
     public function commentCount(): int
     {
-        $threadId = $this->getThreadId();
-
-        if (! $threadId) {
-            return 0;
-        }
-
-        $siteValue = $this->params->get('site') ?? $this->params->get('locale');
-        $site = is_string($siteValue) || is_int($siteValue) ? (string) $siteValue : null;
-
-        if (($site ?? null) === '*') {
-            $site = null;
-        }
-
+        $selection = $this->getThreadSelection();
+        $site = $this->effectiveSiteParam();
         $visibility = app(CommentVisibility::class);
 
-        if ($this->params->bool('include_unpublished', false) && $visibility->canViewModerationForThread($threadId)) {
-            $query = Comment::query()->where('thread_id', $threadId);
+        if ($selection === null) {
+            $query = Comment::query();
+            $visibility->applyPublicVisibility($query);
+            $visibility->excludeOrphanedSubtrees($query);
 
-            if ($site ?? null) {
-                $query->where('site', $site);
+            if ($site !== null) {
+                $query->where('comments.site', $site);
             }
 
             return $query->count();
         }
 
-        return $visibility->publicCount($threadId, $site ?? null);
+        $threadId = $selection[0] ?? null;
+
+        if (! $threadId) {
+            return 0;
+        }
+
+        if ($this->params->bool('include_unpublished', false) && $visibility->canViewModerationForThread($threadId)) {
+            [$includeTombstones, $includeReplies] = $this->resolveTombstoneInclusion();
+            $hidden = Comments::hiddenSubtreeIds($threadId, $includeTombstones, $includeReplies);
+
+            $query = Comment::query()->where('thread_id', $threadId);
+
+            if ($hidden !== []) {
+                $query->whereNotIn('comments.id', $hidden);
+            }
+
+            if ($site !== null) {
+                $query->where('comments.site', $site);
+            }
+
+            return $query->count();
+        }
+
+        return $visibility->publicCount($threadId, $site);
+    }
+
+    /** Matches {@see GetsComments::querySite} semantics. */
+    private function effectiveSiteParam(): ?string
+    {
+        $raw = $this->params->get('site') ?? $this->params->get('locale');
+        $site = is_string($raw) || is_int($raw) ? (string) $raw : null;
+
+        if ($site === '*') {
+            return null;
+        }
+
+        if ($site !== null) {
+            return $site;
+        }
+
+        if (! SiteFacade::hasMultiple()) {
+            return null;
+        }
+
+        $current = SiteFacade::current();
+
+        return $current instanceof Site ? $current->handle() : null;
     }
 
     public function commentsEnabled(): bool
@@ -288,9 +328,9 @@ class Meerkat extends Tags
     {
         $limit = $this->positiveIntegerParam('limit', 5);
 
-        return array_values(collect(app(CommentVisibility::class)->recentPublicComments($limit))
+        return array_values(collect(app(CommentVisibility::class)->recentPublicComments($limit, $this->effectiveSiteParam()))
             ->map(function (Comment $comment) {
-                $row = $comment->toDataArray();
+                $row = PublicCommentData::guard($comment->toDataArray());
                 $row['thread'] = app(ThreadResolver::class)->resolveEntry($comment->thread_id)
                     ?? EntryFacade::find($comment->thread_id);
 
@@ -305,7 +345,7 @@ class Meerkat extends Tags
         $limit = $this->positiveIntegerParam('limit', 5);
         $resolver = app(ThreadResolver::class);
 
-        return array_values(collect(app(CommentVisibility::class)->topPublicThreads($limit))
+        return array_values(collect(app(CommentVisibility::class)->topPublicThreads($limit, $this->effectiveSiteParam()))
             ->map(function (array $row) use ($resolver) {
                 $row['thread'] = $resolver->resolveEntry($row['thread_id'])
                     ?? EntryFacade::find($row['thread_id']);
@@ -340,13 +380,20 @@ class Meerkat extends Tags
         $visibility = app(CommentVisibility::class);
 
         if ($publishedOnly || ! $visibility->canViewModeration()) {
-            return array_values(collect($visibility->publicAuthorHistory($identifier, $limit))
-                ->map(fn (Comment $comment) => $comment->toDataArray())
+            return array_values(collect($visibility->publicAuthorHistory($identifier, $limit, $this->effectiveSiteParam()))
+                ->map(fn (Comment $comment) => PublicCommentData::guard($comment->toDataArray()))
                 ->all());
         }
 
         $query = Comments::query()->byAuthor($identifier)->newest();
         $visibility->applyAccessibleScope($query);
+
+        $site = $this->params->get('site') ?? $this->params->get('locale');
+
+        if ((is_string($site) || is_int($site)) && $site !== '' && $site !== '*') {
+            $query->where('site', (string) $site);
+        }
+
         $query->limit($limit);
 
         $comments = [];
@@ -375,7 +422,7 @@ class Meerkat extends Tags
                 ->toArray());
         }
 
-        return $visibility->publicMetricArray($threadId);
+        return $visibility->publicMetricArray($threadId, $this->effectiveSiteParam());
     }
 
     private function positiveIntegerParam(string $key, int $default): int

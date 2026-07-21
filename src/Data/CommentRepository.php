@@ -6,6 +6,7 @@ namespace Stillat\Meerkat\Data;
 
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -24,12 +25,14 @@ use Stillat\Meerkat\Configuration\Settings;
 use Stillat\Meerkat\Contracts\CommentRepository as CommentRepositoryContract;
 use Stillat\Meerkat\Database\Models\Comment;
 use Stillat\Meerkat\Database\Models\CommentRevision;
+use Stillat\Meerkat\Database\Models\Scopes\AuthorDetailsScope;
 use Stillat\Meerkat\Database\Models\Thread;
 use Stillat\Meerkat\Facades\Comments as CommentsFacade;
 use Stillat\Meerkat\Hooks\CommentSpamCheck;
 use Stillat\Meerkat\Jobs\CheckForSpam;
 use Stillat\Meerkat\Jobs\SubmitHam;
 use Stillat\Meerkat\Jobs\SubmitSpam;
+use Stillat\Meerkat\Listeners\InvalidatesGraphQlCache;
 use Stillat\Meerkat\Mirror\Mirror;
 use Stillat\Meerkat\Services\ModerationAuditManager;
 use Stillat\Meerkat\Services\ThreadMetricsManager;
@@ -63,50 +66,50 @@ class CommentRepository implements CommentRepositoryContract
 
     public function deleteComment(int $id, ?string $reason = null): bool
     {
-        $comment = $this->findComment($id);
+        $threadId = null;
 
-        if (! $comment instanceof Comment) {
-            return false;
-        }
+        $result = $this->withLockedComment($id, function (Comment $comment) use ($id, $reason, &$threadId): bool {
+            if ($comment->is_removed) {
+                return true;
+            }
 
-        if ($comment->is_removed) {
+            $comment = $this->hookComment('deletingComment', $comment);
+
+            $wasPublished = $comment->is_published;
+            $threadId = $comment->thread_id;
+            $hadChildren = $comment->children()->exists();
+
+            $comment->is_removed = true;
+            $comment->removed_at = now();
+            $actorId = auth()->id();
+            $comment->removed_by = is_string($actorId) || is_int($actorId) ? (string) $actorId : null;
+            $comment->removed_reason = $reason;
+
+            if (! $comment->save()) {
+                return false;
+            }
+
+            $this->audit()->log($comment, 'deleted', [
+                'was_published' => $wasPublished,
+                'had_children' => $hadChildren,
+                'reason' => $reason,
+            ]);
+            $this->runHooksWith('after-comment-deleted', [
+                'id' => $id,
+                'was_published' => $wasPublished,
+                'thread_id' => $threadId,
+                'had_children' => $hadChildren,
+            ]);
 
             return true;
+        });
+
+        if ($result && $threadId !== null) {
+            $this->invalidateThreadCache($threadId);
+            $this->metrics()->recalculateThread($threadId);
         }
 
-        $comment = $this->hookComment('deletingComment', $comment);
-
-        $wasPublished = $comment->is_published;
-        $threadId = $comment->thread_id;
-        $hadChildren = $comment->children()->exists();
-
-        $comment->is_removed = true;
-        $comment->removed_at = now();
-        $actorId = auth()->id();
-        $comment->removed_by = is_string($actorId) || is_int($actorId) ? (string) $actorId : null;
-        $comment->removed_reason = $reason;
-
-        $result = $comment->save();
-
-        if (! $result) {
-            return false;
-        }
-
-        $this->audit()->log($comment, 'deleted', [
-            'was_published' => $wasPublished,
-            'had_children' => $hadChildren,
-            'reason' => $reason,
-        ]);
-        $this->runHooksWith('after-comment-deleted', [
-            'id' => $id,
-            'was_published' => $wasPublished,
-            'thread_id' => $threadId,
-            'had_children' => $hadChildren,
-        ]);
-        $this->invalidateThreadCache($threadId);
-        $this->metrics()->recalculateThread($threadId);
-
-        return true;
+        return $result;
     }
 
     public function removeSubtree(int $id, ?string $reason = null): int
@@ -119,17 +122,41 @@ class CommentRepository implements CommentRepositoryContract
 
         $threadId = $comment->thread_id;
 
-        $ids = $this->integerIds($this->subtree($comment)->pluck('id')->all());
+        $subtree = $this->subtree($comment);
+        $ids = $this->integerIds($subtree->pluck('id')->all());
 
-        $count = Comment::query()
-            ->whereIn('comments.id', $ids)
-            ->where('comments.is_removed', false)
-            ->update([
-                'is_removed' => true,
-                'removed_at' => now(),
-                'removed_by' => auth()->id(),
-                'removed_reason' => $reason,
-            ]);
+        $count = (new Comment)->getConnection()->transaction(function () use ($ids, $reason): int {
+            // Lock and re-read so a concurrent transition cannot slip between
+            // the snapshot and the bulk update and double-adjust counters.
+            $fresh = Comment::query()
+                ->withoutGlobalScope(AuthorDetailsScope::class)
+                ->whereIn('comments.id', $ids)
+                ->lockForUpdate()
+                ->get();
+
+            $removed = Comment::query()
+                ->whereIn('comments.id', $ids)
+                ->where('comments.is_removed', false)
+                ->update([
+                    'is_removed' => true,
+                    'removed_at' => now(),
+                    'removed_by' => auth()->id(),
+                    'removed_reason' => $reason,
+                ]);
+
+            if ($removed <= 0) {
+                return $removed;
+            }
+
+            $fresh
+                ->filter(fn (Comment $node): bool => $node->parent_id !== null && $node->is_published && ! $node->is_spam && ! $node->is_removed)
+                ->countBy('parent_id')
+                ->each(function (int $replies, int $parentId): void {
+                    Comment::query()->where('comments.id', $parentId)->decrement('replies_count', $replies);
+                });
+
+            return $removed;
+        });
 
         if ($count <= 0) {
             return $count;
@@ -144,6 +171,7 @@ class CommentRepository implements CommentRepositoryContract
         Mirror::rewrite($ids);
         $this->invalidateThreadCache($threadId);
         $this->metrics()->recalculateThread($threadId);
+        InvalidatesGraphQlCache::flush();
 
         return $count;
     }
@@ -166,11 +194,7 @@ class CommentRepository implements CommentRepositoryContract
         bool $includeTombstones = false,
         bool $includeReplies = false
     ): array {
-        if ($includeReplies) {
-            return [];
-        }
-
-        if ($threadIds === []) {
+        if (($includeTombstones && $includeReplies) || $threadIds === []) {
             return [];
         }
 
@@ -184,6 +208,10 @@ class CommentRepository implements CommentRepositoryContract
 
         if ($tombstones === []) {
             return [];
+        }
+
+        if ($includeReplies) {
+            return $tombstones;
         }
 
         $descendants = $this->collectDescendantIds($tombstones);
@@ -244,46 +272,42 @@ class CommentRepository implements CommentRepositoryContract
 
     public function restoreComment(int $id): bool
     {
-        $comment = $this->findComment($id);
+        return $this->withLockedComment($id, function (Comment $comment): bool {
+            if (! $comment->is_removed) {
+                return false;
+            }
 
-        if (! $comment || ! $comment->is_removed) {
-            return false;
-        }
+            $comment->is_removed = false;
+            $comment->removed_at = null;
+            $comment->removed_by = null;
+            $comment->removed_reason = null;
 
-        $comment->is_removed = false;
-        $comment->removed_at = null;
-        $comment->removed_by = null;
-        $comment->removed_reason = null;
+            $comment = $this->hookComment('restoringComment', $comment);
 
-        $comment = $this->hookComment('restoringComment', $comment);
-
-        return $this->saveAndRecord($comment, 'restored', [
-            'thread_id' => $comment->thread_id,
-        ]);
+            return $this->saveAndRecord($comment, 'restored', [
+                'thread_id' => $comment->thread_id,
+            ]);
+        });
     }
 
     public function markAsSpam(int $id): bool
     {
-        $comment = $this->findComment($id);
+        $saved = $this->withLockedComment($id, function (Comment $comment): bool {
+            $comment->is_spam = true;
+            $comment->is_ham = false;
+            $comment->checked_for_spam = true;
+            $comment->is_published = false;
+            $comment->moderation_reason = 'manual_spam_report';
+            $comment->stampModeration('spam');
 
-        if (! $comment instanceof Comment) {
-            return false;
-        }
+            $comment = $this->hookComment('markingAsSpam', $comment);
 
-        $comment->is_spam = true;
-        $comment->is_ham = false;
-        $comment->checked_for_spam = true;
-        $comment->is_published = false;
-        $comment->moderation_reason = 'manual_spam_report';
-        $comment->stampModeration('spam');
+            return $this->saveAndRecord($comment, 'marked_spam', [
+                'thread_id' => $comment->thread_id,
+            ]);
+        });
 
-        $comment = $this->hookComment('markingAsSpam', $comment);
-
-        $saved = $this->saveAndRecord($comment, 'marked_spam', [
-            'thread_id' => $comment->thread_id,
-        ]);
-
-        if ($this->submitSpamHamResultsToThirdParties()) {
+        if ($saved && $this->submitSpamHamResultsToThirdParties()) {
             SubmitSpam::dispatchMeerkatJob($id);
         }
 
@@ -292,32 +316,28 @@ class CommentRepository implements CommentRepositoryContract
 
     public function markAsHam(int $id): bool
     {
-        $comment = $this->findComment($id);
+        $saved = $this->withLockedComment($id, function (Comment $comment): bool {
+            $wasOriginallySpam = $comment->is_spam;
 
-        if (! $comment instanceof Comment) {
-            return false;
-        }
+            $comment->is_ham = true;
+            $comment->is_spam = false;
+            $comment->checked_for_spam = true;
 
-        $wasOriginallySpam = $comment->is_spam;
+            if ($wasOriginallySpam && ! $comment->is_published && $this->autoUnpublishSpamComments()) {
+                $comment->is_published = true;
+            }
 
-        $comment->is_ham = true;
-        $comment->is_spam = false;
-        $comment->checked_for_spam = true;
+            $comment->moderation_reason = 'manual_ham_report';
+            $comment->stampModeration($comment->is_published ? 'approved' : 'pending');
 
-        if ($wasOriginallySpam && ! $comment->is_published && $this->autoUnpublishSpamComments()) {
-            $comment->is_published = true;
-        }
+            $comment = $this->hookComment('markingAsHam', $comment);
 
-        $comment->moderation_reason = 'manual_ham_report';
-        $comment->stampModeration($comment->is_published ? 'approved' : 'pending');
+            return $this->saveAndRecord($comment, 'marked_ham', [
+                'thread_id' => $comment->thread_id,
+            ]);
+        });
 
-        $comment = $this->hookComment('markingAsHam', $comment);
-
-        $saved = $this->saveAndRecord($comment, 'marked_ham', [
-            'thread_id' => $comment->thread_id,
-        ]);
-
-        if ($this->submitSpamHamResultsToThirdParties()) {
+        if ($saved && $this->submitSpamHamResultsToThirdParties()) {
             SubmitHam::dispatchMeerkatJob($id);
         }
 
@@ -326,59 +346,55 @@ class CommentRepository implements CommentRepositoryContract
 
     public function reject(int $id, ?string $reason = null, ?string $notes = null): bool
     {
-        $comment = $this->findComment($id);
+        return $this->withLockedComment($id, function (Comment $comment) use ($reason, $notes): bool {
+            $comment->is_published = false;
+            $comment->is_spam = false;
+            $comment->is_ham = false;
+            $comment->checked_for_spam = true;
+            $comment->moderation_reason = $reason ?: 'rejected';
+            $comment->moderation_notes = $notes;
+            $comment->stampModeration('rejected');
 
-        if (! $comment instanceof Comment) {
-            return false;
-        }
+            $comment = $this->hookComment('rejectingComment', $comment);
 
-        $comment->is_published = false;
-        $comment->is_spam = false;
-        $comment->is_ham = false;
-        $comment->checked_for_spam = true;
-        $comment->moderation_reason = $reason ?: 'rejected';
-        $comment->moderation_notes = $notes;
-        $comment->stampModeration('rejected');
-
-        $comment = $this->hookComment('rejectingComment', $comment);
-
-        return $this->saveAndRecord($comment, 'rejected', [
-            'reason' => $comment->moderation_reason,
-        ]);
+            return $this->saveAndRecord($comment, 'rejected', [
+                'reason' => $comment->moderation_reason,
+            ]);
+        });
     }
 
     public function publish(int $id): bool
     {
-        $comment = $this->findComment($id);
+        return $this->withLockedComment($id, function (Comment $comment): bool {
+            if ($comment->is_published) {
+                return true;
+            }
 
-        if (! $comment instanceof Comment) {
-            return false;
-        }
+            $comment->is_published = true;
+            $comment->moderation_reason = 'published';
+            $comment->stampModeration('approved');
 
-        $comment->is_published = true;
-        $comment->moderation_reason = 'published';
-        $comment->stampModeration('approved');
+            $comment = $this->hookComment('publishingComment', $comment);
 
-        $comment = $this->hookComment('publishingComment', $comment);
-
-        return $this->saveAndRecord($comment, 'published');
+            return $this->saveAndRecord($comment, 'published');
+        });
     }
 
     public function unpublish(int $id): bool
     {
-        $comment = $this->findComment($id);
+        return $this->withLockedComment($id, function (Comment $comment): bool {
+            if (! $comment->is_published) {
+                return true;
+            }
 
-        if (! $comment instanceof Comment) {
-            return false;
-        }
+            $comment->is_published = false;
+            $comment->moderation_reason = 'unpublished';
+            $comment->stampModeration($comment->is_spam ? 'spam' : 'pending');
 
-        $comment->is_published = false;
-        $comment->moderation_reason = 'unpublished';
-        $comment->stampModeration($comment->is_spam ? 'spam' : 'pending');
+            $comment = $this->hookComment('unpublishingComment', $comment);
 
-        $comment = $this->hookComment('unpublishingComment', $comment);
-
-        return $this->saveAndRecord($comment, 'unpublished');
+            return $this->saveAndRecord($comment, 'unpublished');
+        });
     }
 
     public function restoreRevision(int $commentId, int $revisionNumber): bool
@@ -471,8 +487,6 @@ class CommentRepository implements CommentRepositoryContract
         /** @var Comment $comment */
         [$entry, $comment] = $details;
 
-        $wasPublished = (bool) $comment->is_published;
-
         try {
             $spam = app(CommentSpamCheck::class)->resolve($entry, $comment);
             $entry = $spam['entry'];
@@ -511,6 +525,7 @@ class CommentRepository implements CommentRepositoryContract
                 $shouldUnpublish = $actionPayload instanceof Payload && $actionPayload->should_unpublish === true;
 
                 if ($shouldDelete) {
+                    $this->saveWithoutCommentSavedEvent($comment);
                     $comment->delete();
                     $this->audit()->log($comment, 'auto_deleted_spam', []);
                 } elseif ($shouldUnpublish) {
@@ -520,13 +535,7 @@ class CommentRepository implements CommentRepositoryContract
             }
 
             if (! $comment->trashed()) {
-                $comment->saveQuietly();
-
-                if ($wasPublished && ! $comment->is_published && $comment->parent_id) {
-                    Comment::query()
-                        ->where('comments.id', $comment->parent_id)
-                        ->decrement('replies_count');
-                }
+                $this->saveWithoutCommentSavedEvent($comment);
 
                 $this->audit()->log($comment, 'spam_checked', [
                     'is_spam' => $comment->is_spam,
@@ -542,7 +551,7 @@ class CommentRepository implements CommentRepositoryContract
                 'thread_id' => $comment->thread_id,
             ]);
 
-            if ($comment->is_published && $this->unpublishOnGuardFailure()) {
+            if (! $comment->trashed() && $comment->is_published && $this->unpublishOnGuardFailure()) {
                 $comment->is_published = false;
                 $comment->moderation_status = 'pending';
 
@@ -794,6 +803,10 @@ class CommentRepository implements CommentRepositoryContract
     {
         // Capture by reference to apply the constraint recursively.
         $constraint = function (mixed $query) use (&$constraint, $hidden): void {
+            if ($query instanceof Relation) {
+                $query = $query->getQuery();
+            }
+
             if (! $query instanceof EloquentBuilder) {
                 return;
             }
@@ -845,6 +858,51 @@ class CommentRepository implements CommentRepositoryContract
     private function audit(): ModerationAuditManager
     {
         return app(ModerationAuditManager::class);
+    }
+
+    /** Also skips the before-saving comment hooks; model events still fire. */
+    private function saveWithoutCommentSavedEvent(Comment $comment): bool
+    {
+        $comment->skipHooks = true;
+
+        try {
+            return (bool) $comment->save();
+        } finally {
+            $comment->skipHooks = false;
+        }
+    }
+
+    /**
+     * Locks without the AuthorDetailsScope join: PostgreSQL rejects FOR UPDATE
+     * on the nullable side of an outer join.
+     */
+    private function lockedComment(int $id): ?Comment
+    {
+        Comment::query()
+            ->withoutGlobalScope(AuthorDetailsScope::class)
+            ->select('comments.id')
+            ->whereKey($id)
+            ->lockForUpdate()
+            ->get();
+
+        $comment = Comment::query()->find($id);
+
+        return $comment instanceof Comment ? $comment : null;
+    }
+
+    /**
+     * Runs a mutation with the row locked for the transaction so concurrent
+     * moderation transitions serialize and cannot double-adjust replies_count.
+     *
+     * @param  callable(Comment): bool  $mutate
+     */
+    private function withLockedComment(int $id, callable $mutate): bool
+    {
+        return (new Comment)->getConnection()->transaction(function () use ($id, $mutate): bool {
+            $comment = $this->lockedComment($id);
+
+            return $comment instanceof Comment && $mutate($comment);
+        });
     }
 
     /** @param array<string, mixed> $details */

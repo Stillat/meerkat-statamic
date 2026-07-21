@@ -6,9 +6,11 @@ namespace Stillat\Meerkat\Support;
 
 class Identifiers
 {
+    public const VISUAL_ID_WIDTH = 19;
+
     public static function visualId(int|string $id): string
     {
-        return str_pad((string) $id, 6, '0', STR_PAD_LEFT);
+        return str_pad((string) $id, self::VISUAL_ID_WIDTH, '0', STR_PAD_LEFT);
     }
 
     public static function initials(string $name): string

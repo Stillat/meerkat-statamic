@@ -9,10 +9,10 @@ use Symfony\Component\Yaml\Yaml;
 
 class CommentSerializer
 {
-    private const RESERVED_KEYS = [
+    public const RESERVED_KEYS = [
         'id', 'name', 'email', 'user_ip', 'user_agent', 'referer',
         'published', 'spam', 'ham', 'checked_for_spam', 'is_deleted',
-        'removed_at', 'removed_by', 'removed_reason',
+        'removed_at', 'removed_by', 'removed_reason', 'trashed', 'trashed_at',
         'authenticated_user', 'moderation_status', 'moderation_reason',
         'moderation_notes', 'moderated_by', 'moderated_at', 'comment',
         'internal_author_has_name', 'internal_author_has_email',
@@ -133,6 +133,11 @@ class CommentSerializer
             $tail['removed_at'] = $comment->removed_at?->getTimestamp();
             $tail['removed_by'] = $comment->removed_by;
             $tail['removed_reason'] = $comment->removed_reason;
+        }
+
+        if ($comment->deleted_at !== null) {
+            $tail['trashed'] = true;
+            $tail['trashed_at'] = $comment->deleted_at->getTimestamp();
         }
 
         return array_merge($head, $extras, $tail);

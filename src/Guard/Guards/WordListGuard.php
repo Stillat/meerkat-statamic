@@ -14,17 +14,26 @@ class WordListGuard extends BaseGuard implements SpamGuard
     /** @var array<string, int> */
     protected array $wordList = [];
 
+    /** @var list<string> */
+    protected array $phrases = [];
+
     public function __construct()
     {
         $words = Settings::get('wordlist.banned', []);
 
-        $this->wordList = collect(is_array($words) ? $words : [])
+        $entries = collect(is_array($words) ? $words : [])
             ->filter(fn (mixed $word): bool => is_string($word))
             ->map(fn (string $word): string => mb_strtolower(trim($word)))
             ->filter()
-            ->unique()
-            ->flip()
-            ->all();
+            ->unique();
+
+        foreach ($entries as $entry) {
+            if (preg_match('/^\w+$/u', $entry) === 1) {
+                $this->wordList[$entry] = 1;
+            } else {
+                $this->phrases[] = $entry;
+            }
+        }
     }
 
     /** @return list<string> */
@@ -40,6 +49,12 @@ class WordListGuard extends BaseGuard implements SpamGuard
         foreach ($this->getCommentSearchSpace($comment) as $subject) {
             if (! is_string($subject)) {
                 continue;
+            }
+
+            foreach ($this->phrases as $phrase) {
+                if (mb_stripos($subject, $phrase) !== false) {
+                    return true;
+                }
             }
 
             foreach (collect($this->getWords($subject))->map(fn ($word) => mb_strtolower((string) $word)) as $word) {

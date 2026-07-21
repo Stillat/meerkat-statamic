@@ -25,13 +25,13 @@ class ThreadMetricsManager
                 MAX(COALESCE(last_activity_at, created_at)) as last_activity_at,
                 MAX(depth) as max_depth,
                 COUNT(*) as total_comments,
-                SUM(CASE WHEN is_published = 1 THEN 1 ELSE 0 END) as published_comments,
+                SUM(CASE WHEN is_published AND NOT is_spam THEN 1 ELSE 0 END) as published_comments,
                 SUM(CASE WHEN moderation_status = ? THEN 1 ELSE 0 END) as pending_comments,
                 SUM(CASE WHEN moderation_status = ? THEN 1 ELSE 0 END) as rejected_comments,
-                SUM(CASE WHEN is_spam = 1 THEN 1 ELSE 0 END) as spam_comments,
+                SUM(CASE WHEN is_spam THEN 1 ELSE 0 END) as spam_comments,
                 SUM(CASE WHEN parent_id IS NULL THEN 1 ELSE 0 END) as root_comments,
                 SUM(CASE WHEN parent_id IS NOT NULL THEN 1 ELSE 0 END) as reply_comments,
-                SUM(CASE WHEN checked_for_spam = 1 THEN 1 ELSE 0 END) as checked_for_spam,
+                SUM(CASE WHEN checked_for_spam THEN 1 ELSE 0 END) as checked_for_spam,
                 SUM(CASE WHEN author_id IS NULL THEN 1 ELSE 0 END) as guest_comments,
                 SUM(CASE WHEN author_id IS NOT NULL THEN 1 ELSE 0 END) as authenticated_comments
             ', ['pending', 'rejected'])

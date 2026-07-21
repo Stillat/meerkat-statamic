@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Statamic\Hooks\Payload;
 use Statamic\Support\Traits\Hookable;
+use Stillat\Meerkat\Comments\PublicCommentData;
 use Stillat\Meerkat\Database\Models\Comment;
 use Stillat\Meerkat\Support\CommentMarkdownRenderer;
 use Stillat\Meerkat\Support\CommentVisibility;
@@ -43,25 +44,7 @@ class PublicCommentResource extends JsonResource
         if ($privileged) {
             $base['author']['email'] = $comment->publicEmail();
             $base['author']['id'] = $comment->author_id;
-            $base['is_published'] = (bool) $comment->is_published;
-            $base['is_spam'] = (bool) $comment->is_spam;
-            $base['is_ham'] = (bool) $comment->is_ham;
-            $base['is_removed'] = (bool) $comment->is_removed;
-            $base['removed_at'] = $comment->removed_at?->toIso8601ZuluString('millisecond');
-            $base['removed_by'] = $comment->removed_by;
-            $base['removed_reason'] = $comment->removed_reason;
-            $base['checked_for_spam'] = (bool) $comment->checked_for_spam;
-            $base['moderation_status'] = $comment->moderation_status;
-            $base['moderation_reason'] = $comment->moderation_reason;
-            $base['moderation_notes'] = $comment->moderation_notes;
-            $base['moderated_by'] = $comment->moderated_by;
-            $base['moderated_at'] = $comment->moderated_at?->toIso8601ZuluString('millisecond');
-            $base['published_at'] = $comment->published_at?->toIso8601ZuluString('millisecond');
-            $base['last_activity_at'] = $comment->last_activity_at?->toIso8601ZuluString('millisecond');
-            $base['updated_at'] = $comment->updated_at?->toIso8601ZuluString('millisecond');
-            $base['user_ip'] = $comment->user_ip;
-            $base['user_agent'] = $comment->user_agent;
-            $base['referer'] = $comment->referer;
+            $base = array_merge($base, PublicCommentData::privilegedFields($comment));
         }
 
         $payload = $this->runHooksWith('data', [

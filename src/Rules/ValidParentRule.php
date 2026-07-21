@@ -30,6 +30,12 @@ class ValidParentRule implements ValidationRule
             return;
         }
 
+        if ($this->parentComment->is_removed) {
+            $fail(__('meerkat::validation.parent_visible'));
+
+            return;
+        }
+
         $visibility = app(CommentVisibility::class);
 
         if ($visibility->isPublicVisible($this->parentComment)

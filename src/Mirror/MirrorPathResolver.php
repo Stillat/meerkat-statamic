@@ -66,7 +66,7 @@ class MirrorPathResolver
                 break;
             }
 
-            $current = Comment::query()->where('comments.id', $current->parent_id)->first();
+            $current = Comment::query()->withTrashed()->where('comments.id', $current->parent_id)->first();
         }
 
         return $chain;

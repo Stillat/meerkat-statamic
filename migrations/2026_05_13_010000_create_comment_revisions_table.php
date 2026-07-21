@@ -3,18 +3,17 @@
 declare(strict_types=1);
 
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Stillat\Meerkat\Database\Migration;
 
 return new class extends Migration
 {
     public function up()
     {
-        if (Schema::hasTable('comment_revisions')) {
+        if ($this->hasMeerkatTable('comment_revisions', ['revision_number', 'edit_reason'])) {
             return;
         }
 
-        Schema::create('comment_revisions', function (Blueprint $table) {
+        $this->schema()->create('comment_revisions', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('comment_id');
             $table->unsignedInteger('revision_number');
@@ -34,6 +33,6 @@ return new class extends Migration
 
     public function down()
     {
-        Schema::dropIfExists('comment_revisions');
+        $this->dropMeerkatTable('comment_revisions', ['revision_number', 'edit_reason']);
     }
 };

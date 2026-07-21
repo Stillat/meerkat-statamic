@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Stillat\Meerkat\Guard\Guards;
 
 use Statamic\Contracts\Entries\Entry;
-use Stillat\Meerkat\Concerns\ExtractsFields;
 use Stillat\Meerkat\Configuration\Settings;
 use Stillat\Meerkat\Contracts\SpamGuard;
 use Stillat\Meerkat\Database\Models\Comment;
@@ -13,25 +12,11 @@ use Stillat\Meerkat\Services\AkismetClient;
 
 class AkismetGuard implements SpamGuard
 {
-    use ExtractsFields;
-
     protected AkismetClient $akismet;
-
-    /** @var array<string, mixed> */
-    protected array $fieldMapping = [];
 
     public function __construct()
     {
         $this->akismet = app(AkismetClient::class);
-        $mapping = config('meerkat.akismet.fields', []);
-
-        if (is_array($mapping)) {
-            foreach ($mapping as $field => $value) {
-                if (is_string($field)) {
-                    $this->fieldMapping[$field] = $value;
-                }
-            }
-        }
     }
 
     private function isEnabled(): bool

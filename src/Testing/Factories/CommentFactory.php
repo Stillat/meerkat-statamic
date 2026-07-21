@@ -6,6 +6,7 @@ namespace Stillat\Meerkat\Testing\Factories;
 
 use Stillat\Meerkat\Database\Models\Comment;
 use Stillat\Meerkat\Database\Models\Thread;
+use Stillat\Meerkat\Support\Identifiers;
 
 class CommentFactory
 {
@@ -252,10 +253,11 @@ class CommentFactory
         );
 
         $segment = (string) self::$pathCounter++;
+        $visualSegment = Identifiers::visualId($segment);
         $attributes['path'] ??= $parent ? $parent->path.'.'.$segment : $segment;
         $attributes['visual_path'] ??= $parent
-            ? $parent->visual_path.'.'.str_pad($segment, 6, '0', STR_PAD_LEFT)
-            : str_pad($segment, 6, '0', STR_PAD_LEFT);
+            ? $parent->visual_path.'.'.$visualSegment
+            : $visualSegment;
 
         $comment = (new Comment)->forceFill($attributes);
         $comment->save();

@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Stillat\Meerkat\Support;
 
+use Illuminate\Database\Connection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Stillat\Meerkat\Concerns\GetsMeerkatPermissions;
 use Stillat\Meerkat\Database\CommentQueryBuilder;
 use Stillat\Meerkat\Database\Models\Comment;
+use Stillat\Meerkat\Database\Models\Scopes\AuthorDetailsScope;
 use Stillat\Meerkat\Database\Models\Thread;
 use Stillat\Meerkat\Facades\Comments;
 use Stillat\Meerkat\Permissions\Permissions;
@@ -140,34 +142,72 @@ class CommentVisibility
     {
         $query = Comment::query()->where('comments.thread_id', $threadId);
         $this->applyPublicVisibility($query, $threadId);
-
-        if ($site !== null && $site !== '*') {
-            $query->where('comments.site', $site);
-        }
+        $this->excludeOrphanedSubtrees($query);
+        $this->applySiteFilter($query, $site);
 
         return $query->count();
     }
 
     /**
-     * @return list<Comment>
+     * Excludes descendants of non-visible ancestors via the materialized
+     * `path` column, matching the rendered tree's pruning.
+     *
+     * @param  Builder<Comment>|CommentQueryBuilder  $query
+     * @return Builder<Comment>|CommentQueryBuilder
      */
-    public function recentPublicComments(int $limit): array
+    public function excludeOrphanedSubtrees(Builder|CommentQueryBuilder $query): Builder|CommentQueryBuilder
     {
-        return $this->collectPublicComments(
-            Comment::query()->orderByDesc('comments.created_at'),
-            $limit
-        );
+        $base = $query->getQuery();
+
+        $grammar = $base->getGrammar();
+        $path = $grammar->wrap('comments.path');
+        $ancestorPath = $grammar->wrap('hidden_ancestors.path');
+
+        $connection = $base->getConnection();
+        $driver = $connection instanceof Connection
+            ? $connection->getDriverName()
+            : '';
+        $pattern = in_array($driver, ['mysql', 'mariadb'], true)
+            ? "CONCAT({$ancestorPath}, '.%')"
+            : "({$ancestorPath} || '.%')";
+
+        $query->whereNotExists(function (\Illuminate\Database\Query\Builder $sub) use ($path, $pattern): void {
+            $sub->from('comments as hidden_ancestors')
+                ->whereColumn('hidden_ancestors.thread_id', 'comments.thread_id')
+                ->where(function (\Illuminate\Database\Query\Builder $hidden): void {
+                    $hidden->where('hidden_ancestors.is_published', false)
+                        ->orWhere('hidden_ancestors.is_spam', true)
+                        ->orWhere('hidden_ancestors.is_removed', true)
+                        ->orWhereNotNull('hidden_ancestors.deleted_at');
+                })
+                ->whereRaw("{$path} LIKE {$pattern}");
+        });
+
+        return $query;
     }
 
     /**
      * @return list<Comment>
      */
-    public function publicAuthorHistory(string $identifier, int $limit): array
+    public function recentPublicComments(int $limit, ?string $site = null): array
     {
-        return $this->collectPublicComments(
-            Comments::query()->byAuthor($identifier)->newest(),
-            $limit
-        );
+        $query = Comment::query()->orderByDesc('comments.created_at');
+        $this->excludeOrphanedSubtrees($query);
+        $this->applySiteFilter($query, $site);
+
+        return $this->collectPublicComments($query, $limit);
+    }
+
+    /**
+     * @return list<Comment>
+     */
+    public function publicAuthorHistory(string $identifier, int $limit, ?string $site = null): array
+    {
+        $query = Comments::query()->byAuthor($identifier)->newest();
+        $this->excludeOrphanedSubtrees($query);
+        $this->applySiteFilter($query, $site);
+
+        return $this->collectPublicComments($query, $limit);
     }
 
     /**
@@ -175,25 +215,30 @@ class CommentVisibility
      */
     public function publicSearch(string $term, int $limit): array
     {
-        return $this->collectPublicComments(
-            Comments::query()->searchAll($term)->newest(),
-            $limit
-        );
+        $query = Comments::query()->searchAll($term)->newest();
+        $this->excludeOrphanedSubtrees($query);
+
+        return $this->collectPublicComments($query, $limit);
     }
 
     /**
      * @return list<array{thread_id: string, comment_count: int, participant_count: int, last_activity: mixed}>
      */
-    public function topPublicThreads(int $limit): array
+    public function topPublicThreads(int $limit, ?string $site = null): array
     {
-        $query = Comment::query();
-        $this->applyPublicVisibility($query);
+        $aggregate = Comment::query()->withoutGlobalScope(AuthorDetailsScope::class);
+        $this->applyPublicVisibility($aggregate);
+        $this->excludeOrphanedSubtrees($aggregate);
+        $this->applySiteFilter($aggregate, $site);
 
-        $threadIds = $query
-            ->select('comments.thread_id')
+        $createdAt = $aggregate->getQuery()->getGrammar()->wrap('comments.created_at');
+
+        $threadIds = $aggregate
             ->groupBy('comments.thread_id')
             ->orderByRaw('COUNT(*) DESC')
-            ->pluck('thread_id')
+            ->orderByRaw("MAX({$createdAt}) DESC")
+            ->limit($limit)
+            ->pluck('comments.thread_id')
             ->all();
 
         $rows = [];
@@ -203,11 +248,11 @@ class CommentVisibility
                 continue;
             }
 
-            $comments = Comment::query()
-                ->where('comments.thread_id', $threadId)
-                ->orderByDesc('comments.created_at')
-                ->get()
-                ->filter(fn (Comment $comment) => $this->isPublicVisible($comment));
+            $query = Comment::query()->where('comments.thread_id', $threadId);
+            $this->applyPublicVisibility($query);
+            $this->excludeOrphanedSubtrees($query);
+            $this->applySiteFilter($query, $site);
+            $comments = $query->get();
 
             if ($comments->isEmpty()) {
                 continue;
@@ -221,20 +266,19 @@ class CommentVisibility
             ];
         }
 
-        usort($rows, fn (array $a, array $b) => [$b['comment_count'], $b['last_activity']] <=> [$a['comment_count'], $a['last_activity']]);
-
-        return array_slice($rows, 0, $limit);
+        return $rows;
     }
 
     /** @return array<string, mixed> */
-    public function publicMetricArray(string $threadId): array
+    public function publicMetricArray(string $threadId, ?string $siteFilter = null): array
     {
         [$site, $collection] = $this->threadSiteAndCollection($threadId);
-        $comments = Comment::query()
-            ->where('comments.thread_id', $threadId)
-            ->get()
-            ->filter(fn (Comment $comment) => $this->isPublicVisible($comment))
-            ->values();
+
+        $query = Comment::query()->where('comments.thread_id', $threadId);
+        $this->applyPublicVisibility($query, $threadId);
+        $this->excludeOrphanedSubtrees($query);
+        $this->applySiteFilter($query, $siteFilter);
+        $comments = $query->get()->values();
 
         return [
             'thread_id' => $threadId,
@@ -252,6 +296,16 @@ class CommentVisibility
             'last_activity_at' => $comments->max(fn (Comment $comment) => $comment->last_activity_at ?? $comment->created_at),
             'metadata' => [],
         ];
+    }
+
+    /**
+     * @param  Builder<Comment>|CommentQueryBuilder  $query
+     */
+    private function applySiteFilter(Builder|CommentQueryBuilder $query, ?string $site): void
+    {
+        if ($site !== null && $site !== '*') {
+            $query->where('comments.site', $site);
+        }
     }
 
     private function integerValue(mixed $value): int

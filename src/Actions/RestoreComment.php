@@ -6,11 +6,14 @@ namespace Stillat\Meerkat\Actions;
 
 use Illuminate\Support\Collection;
 use Statamic\Actions\Action;
+use Stillat\Meerkat\Actions\Concerns\AuthorizesCommentActions;
 use Stillat\Meerkat\Contracts\CommentRepository;
 use Stillat\Meerkat\Database\Models\Comment;
 
 class RestoreComment extends Action
 {
+    use AuthorizesCommentActions;
+
     public function __construct(
         protected CommentRepository $comments
     ) {
@@ -32,6 +35,11 @@ class RestoreComment extends Action
         return __('meerkat::general.restore_comment_button');
     }
 
+    protected function permission(): string
+    {
+        return 'delete comments';
+    }
+
     /**
      * @template TItem
      *
@@ -39,25 +47,16 @@ class RestoreComment extends Action
      */
     public function visibleToBulk($items): bool
     {
-        if (! auth()->user()?->can('delete comments')) {
-            return false;
-        }
-
-        return $items->contains(fn ($item) => $item instanceof Comment && (bool) $item->is_removed);
+        return $this->userCanRunAction(auth()->user())
+            && $items->contains(fn ($item) => $item instanceof Comment && (bool) $item->is_removed);
     }
 
     /** @param mixed $item */
     public function visibleTo($item): bool
     {
-        if (! $item instanceof Comment) {
-            return false;
-        }
-
-        if (! auth()->user()?->can('delete comments')) {
-            return false;
-        }
-
-        return (bool) $item->is_removed;
+        return $item instanceof Comment
+            && $this->authorize(auth()->user(), $item)
+            && (bool) $item->is_removed;
     }
 
     /**

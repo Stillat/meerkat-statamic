@@ -25,7 +25,10 @@
         "statamic/cms": "^6.24.2",
         "ext-dom": "*",
         "league/csv": "^9.0",
+        "nesbot/carbon": "^3.13",
         "spatie/invade": "^2.1",
+        "symfony/http-foundation": "^7.4",
+        "symfony/yaml": "^7.4",
         "ueberdosis/tiptap-php": "^2.0",
         "ext-libxml": "*"
     },

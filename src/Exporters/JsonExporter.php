@@ -10,20 +10,19 @@ class JsonExporter extends Exporter
 {
     public function export(): string
     {
-        $threadIds = collect($this->comments)->pluck('thread_id')->unique()->values();
+        $comments = collect($this->comments)
+            ->map(fn ($comment) => $comment->toExportArray())
+            ->values();
 
         $payload = [
             'generated_at' => now()->toIso8601String(),
             'threads' => Thread::query()
-                ->whereIn('thread_id', $threadIds)
+                ->whereIn('thread_id', $comments->pluck('thread_id')->unique()->values())
                 ->get()
                 ->map(fn ($thread) => $thread->toArray())
                 ->values()
                 ->all(),
-            'comments' => collect($this->comments)
-                ->map(fn ($comment) => $comment->toExportArray())
-                ->values()
-                ->all(),
+            'comments' => $comments->all(),
         ];
 
         return json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);

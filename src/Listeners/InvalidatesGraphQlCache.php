@@ -21,4 +21,13 @@ class InvalidatesGraphQlCache
         Comment::deleted($flush);
         Comment::restored($flush);
     }
+
+    public static function flush(): void
+    {
+        if (! app()->bound(ResponseCache::class)) {
+            return;
+        }
+
+        app(ResponseCache::class)->handleInvalidationEvent(new CommentSaved(new Comment));
+    }
 }

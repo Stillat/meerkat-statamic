@@ -316,6 +316,7 @@ class ThreadController extends Controller
 
             if (! $includeRemoved) {
                 $query->where('comments.is_removed', false);
+                $this->visibility->excludeOrphanedSubtrees($query);
             }
         }
 

@@ -41,7 +41,15 @@ trait InteractsWithCommentVisibility
      */
     protected function publicChildrenConstraint(array $hidden): Closure
     {
-        $constraint = function (Relation $relation) use (&$constraint, $hidden): void {
+        return $this->childrenConstraintAtDepth($hidden, 1, $this->maxHydrationDepth());
+    }
+
+    /**
+     * @param  list<int>  $hidden
+     */
+    private function childrenConstraintAtDepth(array $hidden, int $depth, int $maxDepth): Closure
+    {
+        return function (Relation $relation) use ($hidden, $depth, $maxDepth): void {
             $query = $relation->getQuery();
 
             $query->where('is_published', true)
@@ -52,10 +60,22 @@ trait InteractsWithCommentVisibility
                 $query->whereNotIn('comments.id', $hidden);
             }
 
-            $query->with(['userMeta', 'allChildren' => $constraint]);
-        };
+            $query->with('userMeta');
 
-        return $constraint;
+            // allChildren eager-loads itself by definition; past the cap it must be removed.
+            $depth < $maxDepth
+                ? $query->with(['allChildren' => $this->childrenConstraintAtDepth($hidden, $depth + 1, $maxDepth)])
+                : $query->without('allChildren');
+        };
+    }
+
+    private function maxHydrationDepth(): int
+    {
+        $writeDepth = $this->integerGraphqlConfig('meerkat.publishing.max_reply_depth', 0);
+
+        return $writeDepth > 0
+            ? $writeDepth
+            : max(1, $this->integerGraphqlConfig('meerkat.graphql.max_depth', 25));
     }
 
     protected function resolvePerPage(?int $limit): int

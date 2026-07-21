@@ -6,13 +6,14 @@ namespace Stillat\Meerkat\Actions;
 
 use Illuminate\Support\Collection;
 use Statamic\Actions\Action;
+use Stillat\Meerkat\Actions\Concerns\AuthorizesCommentActions;
 use Stillat\Meerkat\Actions\Concerns\ReportsBulkOutcome;
 use Stillat\Meerkat\Contracts\CommentRepository;
 use Stillat\Meerkat\Database\Models\Comment;
 
 class RejectComment extends Action
 {
-    use ReportsBulkOutcome;
+    use AuthorizesCommentActions, ReportsBulkOutcome;
 
     public function __construct(
         protected CommentRepository $comments
@@ -47,20 +48,16 @@ class RejectComment extends Action
         ];
     }
 
-    /** @param Collection<int, Comment> $items */
-    public function visibleToBulk($items): bool
+    protected function permission(): string
     {
-        return auth()->user()?->can('edit comments') ?? false;
+        return 'edit comments';
     }
 
     /** @param mixed $item */
     public function visibleTo($item): bool
     {
-        if (! $item instanceof Comment) {
-            return false;
-        }
-
-        return (auth()->user()?->can('edit comments') ?? false)
+        return $item instanceof Comment
+            && $this->authorize(auth()->user(), $item)
             && $item->moderation_status !== 'rejected';
     }
 

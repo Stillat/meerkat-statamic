@@ -12,9 +12,12 @@ use Stillat\Meerkat\Database\Models\CommentModerationAudit;
 use Stillat\Meerkat\Database\Models\CommentRevision;
 use Stillat\Meerkat\Database\Models\UserMeta;
 use Stillat\Meerkat\Facades\Comments;
+use Stillat\Meerkat\Listeners\InvalidatesGraphQlCache;
 use Stillat\Meerkat\Mirror\Mirror;
 use Stillat\Meerkat\Services\Identity\IdentityDataResolver;
 use Stillat\Meerkat\Services\Identity\IdentityDataset;
+use Stillat\Meerkat\Services\ThreadMetricsManager;
+use Stillat\Meerkat\Support\ThreadCache;
 
 class ForgetIdentityCommand extends Command
 {
@@ -87,12 +90,12 @@ class ForgetIdentityCommand extends Command
         if ($mode === 'hard-delete' && $counts['comments'] > 0) {
             $this->components->warn(
                 'hard-delete cascades to descendant comments (other people\'s replies underneath the subject\'s comments). '
-                .'Confirm the subject understood this consequence — anonymize is usually the right answer.'
+                .'Confirm the subject understood this consequence; anonymize is usually the right answer.'
             );
         }
 
         if ($this->option('dry-run')) {
-            $this->components->warn('Dry run — no rows modified.');
+            $this->components->warn('Dry run: no rows modified.');
 
             return self::SUCCESS;
         }
@@ -146,6 +149,7 @@ class ForgetIdentityCommand extends Command
                 ]);
 
             Mirror::rewrite($dataset->commentIds);
+            $this->refreshThreads($dataset->commentIds);
         }
 
         $counts['users_meta_deleted'] = $this->forceDeleteUserMeta($dataset);
@@ -175,6 +179,18 @@ class ForgetIdentityCommand extends Command
         $counts = $this->anonymize($dataset);
 
         if ($dataset->commentIds !== []) {
+            Comment::query()
+                ->whereIn('comments.id', $dataset->commentIds)
+                ->where('comments.is_removed', false)
+                ->where('comments.is_published', true)
+                ->where('comments.is_spam', false)
+                ->whereNotNull('comments.parent_id')
+                ->pluck('comments.parent_id')
+                ->countBy()
+                ->each(function (int $replies, int $parentId): void {
+                    Comment::query()->where('comments.id', $parentId)->decrement('replies_count', $replies);
+                });
+
             $counts['comments_tombstoned'] = Comment::query()->withTrashed()
                 ->whereIn('comments.id', $dataset->commentIds)
                 ->where('comments.is_removed', false)
@@ -186,9 +202,30 @@ class ForgetIdentityCommand extends Command
                 ]);
 
             Mirror::rewrite($dataset->commentIds);
+            $this->refreshThreads($dataset->commentIds);
         }
 
         return $counts;
+    }
+
+    /** @param list<int> $commentIds */
+    private function refreshThreads(array $commentIds): void
+    {
+        $threadIds = Comment::query()->withTrashed()
+            ->whereIn('comments.id', $commentIds)
+            ->distinct()
+            ->pluck('comments.thread_id');
+
+        foreach ($threadIds as $threadId) {
+            if (! is_string($threadId) || $threadId === '') {
+                continue;
+            }
+
+            ThreadCache::invalidate($threadId);
+            app(ThreadMetricsManager::class)->recalculateThread($threadId);
+        }
+
+        InvalidatesGraphQlCache::flush();
     }
 
     /**

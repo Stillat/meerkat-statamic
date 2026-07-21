@@ -33,8 +33,10 @@ class FilesystemSync
         'threads_soft_deleted' => 0,
         'comments_created' => 0,
         'comments_updated' => 0,
+        'comment_ids_corrected' => 0,
         'users_meta_created' => 0,
         'files_skipped' => 0,
+        'legacy_dirs_would_rename' => 0,
     ];
 
     /** @var list<array{file: string, error: string}> */
@@ -50,9 +52,18 @@ class FilesystemSync
      */
     private array $userMetaCache = [];
 
+    /**
+     * Comment ids present as directory names in the thread being synced.
+     * PHP casts numeric-string array keys to integers.
+     *
+     * @var array<array-key, true>
+     */
+    private array $currentThreadFileIds = [];
+
     public function __construct(
         private readonly string $root,
         private readonly ?ThreadMetricsManager $metrics = null,
+        private readonly bool $dryRun = false,
     ) {}
 
     /**
@@ -75,18 +86,23 @@ class FilesystemSync
             }
         });
 
-        $touchedThreadIds = array_unique(array_map(
-            fn ($k) => explode(':', $k, 2)[0],
-            array_keys($this->idMap),
-        ));
+        // A dry run skips the counter/metric rebuild: it does not affect the
+        // reported stats and would flush caches outside the rolled-back
+        // transaction.
+        if (! $this->dryRun) {
+            $touchedThreadIds = array_unique(array_map(
+                fn ($k) => explode(':', $k, 2)[0],
+                array_keys($this->idMap),
+            ));
 
-        foreach ($touchedThreadIds as $threadId) {
-            $this->recomputeRepliesCounts($threadId);
-        }
-
-        if ($this->metrics instanceof ThreadMetricsManager) {
             foreach ($touchedThreadIds as $threadId) {
-                $this->metrics->recalculateThread($threadId);
+                $this->recomputeRepliesCounts($threadId);
+            }
+
+            if ($this->metrics instanceof ThreadMetricsManager) {
+                foreach ($touchedThreadIds as $threadId) {
+                    $this->metrics->recalculateThread($threadId);
+                }
             }
         }
 
@@ -106,6 +122,9 @@ class FilesystemSync
                 ->withoutGlobalScopes()
                 ->where('thread_id', $threadId)
                 ->where('is_published', true)
+                ->where('is_spam', false)
+                ->where('is_removed', false)
+                ->whereNull('deleted_at')
                 ->whereNotNull('parent_id')
                 ->selectRaw('parent_id, COUNT(*) as reply_total')
                 ->groupBy('parent_id')
@@ -138,6 +157,8 @@ class FilesystemSync
                     'file' => $threadDir,
                     'error' => "both legacy `_{$threadId}` and `{$threadId}` directories exist; not renaming",
                 ];
+            } elseif ($this->dryRun) {
+                $this->stats['legacy_dirs_would_rename']++;
             } elseif (rename($threadDir, $cleanDir)) {
                 $threadDir = $cleanDir;
             } else {
@@ -211,11 +232,49 @@ class FilesystemSync
             $thread->save();
         }
 
+        $this->currentThreadFileIds = [];
+        $this->collectCommentDirectoryIds($threadDir);
+
         foreach (File::directories($threadDir) as $rootCommentDir) {
             if (is_string($rootCommentDir)) {
                 $this->syncComment($rootCommentDir, $threadId, parentId: null, depth: 0);
             }
         }
+    }
+
+    private function collectCommentDirectoryIds(string $directory): void
+    {
+        foreach (File::directories($directory) as $commentDir) {
+            if (! is_string($commentDir)) {
+                continue;
+            }
+
+            $this->currentThreadFileIds[basename($commentDir)] = true;
+
+            $repliesDir = $commentDir.'/replies';
+
+            if (File::isDirectory($repliesDir)) {
+                $this->collectCommentDirectoryIds($repliesDir);
+            }
+        }
+    }
+
+    private function findByTimestampId(string $threadId, string $timestampId): ?Comment
+    {
+        return Comment::query()
+            ->withTrashed()
+            ->where('comments.thread_id', $threadId)
+            ->where('comments.timestamp_id', $timestampId)
+            ->first();
+    }
+
+    private function sameParent(Comment $existing, ?int $parentId): bool
+    {
+        if ($existing->parent_id === null || $parentId === null) {
+            return $existing->parent_id === null && $parentId === null;
+        }
+
+        return (int) $existing->parent_id === $parentId;
     }
 
     /**
@@ -241,7 +300,15 @@ class FilesystemSync
             return null;
         }
 
-        return array_filter($meta, is_string(...), ARRAY_FILTER_USE_KEY);
+        $normalized = [];
+
+        foreach ($meta as $key => $value) {
+            if (is_string($key)) {
+                $normalized[$key] = $value;
+            }
+        }
+
+        return $normalized;
     }
 
     private function syncComment(string $commentDir, string $threadId, ?int $parentId, int $depth): void
@@ -271,6 +338,7 @@ class FilesystemSync
         }
 
         $this->idMap[$threadId.':'.$row->timestamp_id] = $row->id;
+        $commentDir = $this->renameCorrectedDirectory($commentDir, $row);
 
         $repliesDir = $commentDir.'/replies';
 
@@ -284,11 +352,41 @@ class FilesystemSync
     }
 
     /**
+     * Renames a directory whose id was collision-corrected so the tree
+     * converges on the corrected id and later syncs do not re-collide.
+     */
+    private function renameCorrectedDirectory(string $commentDir, Comment $row): string
+    {
+        $correctedId = $row->timestamp_id;
+
+        if ($this->dryRun
+            || $correctedId === null
+            || ! is_numeric(basename($commentDir))
+            || $correctedId === basename($commentDir)) {
+            return $commentDir;
+        }
+
+        $target = dirname($commentDir).'/'.$correctedId;
+
+        if (File::isDirectory($target) || ! rename($commentDir, $target)) {
+            $this->errors[] = [
+                'file' => $commentDir,
+                'error' => "failed to rename collision-corrected directory to `{$correctedId}`",
+            ];
+
+            return $commentDir;
+        }
+
+        return $target;
+    }
+
+    /**
      * @param  array<string, mixed>  $frontmatter
      */
     private function hydrate(array $frontmatter, string $body, string $threadId, ?int $parentId, int $depth, string $directoryName): ?Comment
     {
-        $timestampId = $this->nullableScalarString($frontmatter['id'] ?? null) ?? $directoryName;
+        $headerId = $this->nullableScalarString($frontmatter['id'] ?? null);
+        $timestampId = is_numeric($directoryName) ? $directoryName : ($headerId ?? $directoryName);
 
         if ($timestampId === '' || ! is_numeric($timestampId)) {
             $this->stats['files_skipped']++;
@@ -297,18 +395,51 @@ class FilesystemSync
             return null;
         }
 
+        if ($body === '') {
+            // v2-era files stored the body in a `comment`/`content` front matter key.
+            foreach (['comment', 'content'] as $legacyContentKey) {
+                $legacyContent = $frontmatter[$legacyContentKey] ?? null;
+
+                if (is_string($legacyContent) && $legacyContent !== '') {
+                    $body = $legacyContent;
+                    unset($frontmatter[$legacyContentKey]);
+                    break;
+                }
+            }
+        }
+
         $createdAt = Carbon::createFromTimestamp((int) $timestampId);
 
-        $existing = Comment::query()
-            ->withTrashed()
-            ->where('comments.thread_id', $threadId)
-            ->where('comments.timestamp_id', $timestampId)
-            ->first();
+        $existing = $this->findByTimestampId($threadId, $timestampId);
 
-        $isNew = $existing === null;
+        // v3 assigned ids from time() with no collision handling, so same-second
+        // comments under different parents can share an id. Corrected ids must
+        // be free on disk: a same-parent row claimed by another directory
+        // belongs to that directory's comment.
+        if ($existing instanceof Comment && ! $this->sameParent($existing, $parentId)) {
+            do {
+                $timestampId = (string) (((int) $timestampId) + 1);
+                $existing = isset($this->currentThreadFileIds[$timestampId])
+                    ? null
+                    : $this->findByTimestampId($threadId, $timestampId);
+            } while (isset($this->currentThreadFileIds[$timestampId])
+                || ($existing instanceof Comment && ! $this->sameParent($existing, $parentId)));
+
+            $this->currentThreadFileIds[$timestampId] = true;
+
+            $this->stats['comment_ids_corrected']++;
+        }
+
+        $isNew = ! $existing instanceof Comment;
         $comment = $existing ?? new Comment;
 
-        if ($existing !== null && $existing->deleted_at !== null) {
+        if ((bool) ($frontmatter['trashed'] ?? false)) {
+            if (array_key_exists('trashed_at', $frontmatter) && is_numeric($frontmatter['trashed_at'])) {
+                $comment->deleted_at = Carbon::createFromTimestamp((int) $frontmatter['trashed_at']);
+            } elseif ($comment->deleted_at === null) {
+                $comment->deleted_at = $createdAt;
+            }
+        } else {
             $comment->deleted_at = null;
         }
 
@@ -326,7 +457,8 @@ class FilesystemSync
         $comment->user_ip = $this->nullableScalarString($frontmatter['user_ip'] ?? null);
         $comment->user_agent = $this->nullableScalarString($frontmatter['user_agent'] ?? null);
         $comment->referer = $this->nullableScalarString($frontmatter['referer'] ?? null);
-        $comment->is_published = (bool) ($frontmatter['published'] ?? true);
+        // v3 treated a missing `published` key as unpublished.
+        $comment->is_published = (bool) ($frontmatter['published'] ?? false);
         $comment->is_spam = (bool) ($frontmatter['spam'] ?? false);
 
         $comment->is_ham = array_key_exists('ham', $frontmatter)
@@ -334,9 +466,10 @@ class FilesystemSync
             : (array_key_exists('is_ham', $frontmatter) // legacy key
                 ? (bool) $frontmatter['is_ham']
                 : (bool) ($comment->is_ham ?? false));
+        // In v3, the presence of the `spam` key meant "checked".
         $comment->checked_for_spam = array_key_exists('checked_for_spam', $frontmatter)
             ? (bool) $frontmatter['checked_for_spam']
-            : (bool) ($comment->checked_for_spam ?? false);
+            : (array_key_exists('spam', $frontmatter) || (bool) ($comment->checked_for_spam ?? false));
 
         if (array_key_exists('moderation_status', $frontmatter) && $frontmatter['moderation_status'] !== null) {
             $moderationStatus = $this->nullableScalarString($frontmatter['moderation_status']);
@@ -358,24 +491,26 @@ class FilesystemSync
             $comment->moderated_at = Carbon::createFromTimestamp((int) $frontmatter['moderated_at']);
         }
 
-        if (array_key_exists('is_deleted', $frontmatter)) {
-            $isDeleted = (bool) $frontmatter['is_deleted'];
-            $comment->is_removed = $isDeleted;
+        $isDeleted = (bool) ($frontmatter['is_deleted'] ?? false);
+        $comment->is_removed = $isDeleted;
 
-            if ($isDeleted) {
-                if (array_key_exists('removed_at', $frontmatter) && is_numeric($frontmatter['removed_at'])) {
-                    $comment->removed_at = Carbon::createFromTimestamp((int) $frontmatter['removed_at']);
-                } elseif ($comment->removed_at === null) {
-                    $comment->removed_at = $createdAt;
-                }
-
-                if (array_key_exists('removed_by', $frontmatter)) {
-                    $comment->removed_by = $this->nullableScalarString($frontmatter['removed_by']);
-                }
-                if (array_key_exists('removed_reason', $frontmatter)) {
-                    $comment->removed_reason = $this->nullableScalarString($frontmatter['removed_reason']);
-                }
+        if ($isDeleted) {
+            if (array_key_exists('removed_at', $frontmatter) && is_numeric($frontmatter['removed_at'])) {
+                $comment->removed_at = Carbon::createFromTimestamp((int) $frontmatter['removed_at']);
+            } elseif ($comment->removed_at === null) {
+                $comment->removed_at = $createdAt;
             }
+
+            if (array_key_exists('removed_by', $frontmatter)) {
+                $comment->removed_by = $this->nullableScalarString($frontmatter['removed_by']);
+            }
+            if (array_key_exists('removed_reason', $frontmatter)) {
+                $comment->removed_reason = $this->nullableScalarString($frontmatter['removed_reason']);
+            }
+        } else {
+            $comment->removed_at = null;
+            $comment->removed_by = null;
+            $comment->removed_reason = null;
         }
 
         $authId = null;
@@ -552,14 +687,8 @@ class FilesystemSync
      */
     private function extras(array $frontmatter): array
     {
-
-        $reserved = [
-            'id', 'name', 'email', 'user_ip', 'user_agent', 'referer',
-            'published', 'spam', 'is_deleted', 'removed_at', 'removed_by', 'removed_reason',
-            'authenticated_user',
-            'internal_author_has_name', 'internal_author_has_email',
-            'comment',
-        ];
+        // The serializer's reserved keys, plus the legacy v3 spelling of `ham`.
+        $reserved = [...CommentSerializer::RESERVED_KEYS, 'is_ham'];
 
         $extras = [];
         foreach ($frontmatter as $key => $value) {

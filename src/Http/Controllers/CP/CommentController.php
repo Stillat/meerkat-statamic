@@ -139,7 +139,7 @@ class CommentController extends CpController
         $exporter = $isJson ? new JsonExporter : new CsvExporter;
 
         $exporter->setConfig([])
-            ->setComments(array_values($query->get()->all()));
+            ->setComments($query->orderBy('comments.id')->lazy());
 
         return $exporter->download();
     }
@@ -165,6 +165,7 @@ class CommentController extends CpController
         /** @var CommentRepository $comments */
         $comments = app(CommentRepository::class);
         $parent = Comment::query()->findOrFail($parent);
+        abort_if($parent->is_removed, 422, __('meerkat::validation.parent_visible'));
         $reply = $comments->inReplyTo($parent);
         $authUser = User::current();
         abort_if($authUser === null, 403);
@@ -244,9 +245,12 @@ class CommentController extends CpController
 
         $reply->materializePath($parentComment);
 
-        if (! $reply->saveQuietly()) {
-            return response()->json(['saved' => false], 422);
-        }
+        // Persist the path directly: the id is only known after the insert, and
+        // the mirror file location does not depend on these columns.
+        Comment::query()->whereKey($reply->id)->update([
+            'path' => $reply->path,
+            'visual_path' => $reply->visual_path,
+        ]);
 
         return (new CommentResource($reply->fresh()))
             ->blueprint($this->getBlueprint())
@@ -354,6 +358,8 @@ class CommentController extends CpController
     public function threadComments(string $threadId): JsonResponse
     {
         $this->requirePermission('view comments');
+
+        abort_unless(app(CommentVisibility::class)->canViewModerationForThread($threadId), 403);
 
         $query = Comment::query()
             ->where('comments.thread_id', $threadId)

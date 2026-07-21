@@ -81,7 +81,7 @@ class PurgeCommand extends Command
         $this->components->info("Found {$count} row(s) eligible to {$verb}.");
 
         if ($this->option('dry-run')) {
-            $this->components->warn('Dry run — no rows were modified.');
+            $this->components->warn('Dry run: no rows were modified.');
 
             return self::SUCCESS;
         }

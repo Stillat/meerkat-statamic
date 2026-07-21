@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Rector\CodeQuality\Rector\Catch_\ThrowWithPreviousExceptionRector;
 use Rector\Config\RectorConfig;
 use RectorLaravel\Set\LaravelLevelSetList;
 
@@ -18,4 +19,9 @@ return RectorConfig::configure()
     )
     ->withSets([
         LaravelLevelSetList::UP_TO_LARAVEL_120,
+    ])
+    ->withSkip([
+        ThrowWithPreviousExceptionRector::class => [
+            __DIR__.'/src/Services/AkismetClient.php',
+        ],
     ]);

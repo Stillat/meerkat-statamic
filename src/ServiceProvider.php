@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace Stillat\Meerkat;
 
 use Illuminate\Support\Facades\Route;
+use Statamic\Events\EntryDeleted;
+use Statamic\Events\EntrySaved;
+use Statamic\Events\UserDeleted;
+use Statamic\Events\UserSaved;
 use Statamic\Facades\CP\Nav;
 use Statamic\Facades\GraphQL;
 use Statamic\Facades\Permission;
@@ -12,6 +16,7 @@ use Statamic\Providers\AddonServiceProvider;
 use Stillat\Meerkat\Configuration\SettingsBlueprint;
 use Stillat\Meerkat\Database\CommentQueryBuilder;
 use Stillat\Meerkat\Database\Models\Comment;
+use Stillat\Meerkat\Events\CommentSaved;
 use Stillat\Meerkat\GraphQL\Queries\CommentQuery;
 use Stillat\Meerkat\GraphQL\Queries\CommentsQuery;
 use Stillat\Meerkat\GraphQL\Queries\ThreadQuery;
@@ -34,6 +39,14 @@ class ServiceProvider extends AddonServiceProvider
 
     protected $scopes = [
         Fields::class,
+    ];
+
+    protected $listen = [
+        CommentSaved::class => [Listeners\CommentSavedListener::class],
+        EntrySaved::class => [Listeners\EntrySavedListener::class],
+        EntryDeleted::class => [Listeners\EntryDeletedListener::class],
+        UserSaved::class => [Listeners\UserSavedListener::class],
+        UserDeleted::class => [Listeners\UserDeletedListener::class],
     ];
 
     protected $commands = [
@@ -71,7 +84,33 @@ class ServiceProvider extends AddonServiceProvider
             ->loadTranslations()
             ->loadViews()
             ->bootPermissions()
+            ->guardContentVariables()
             ->createNav();
+    }
+
+    protected function guardContentVariables(): static
+    {
+        if (config('meerkat.security.guard_content_variables', true) !== true) {
+            return $this;
+        }
+
+        $patterns = [];
+
+        foreach (Comments\PublicCommentData::GUARDED_KEYS as $key) {
+            $patterns[] = $key;
+            $patterns[] = '*.'.$key;
+            $patterns[] = '*:'.$key;
+        }
+
+        $existing = config('statamic.antlers.guardedContentVariables', []);
+        $existing = is_array($existing) ? array_values(array_filter($existing, is_string(...))) : [];
+
+        config(['statamic.antlers.guardedContentVariables' => array_values(array_unique(array_merge(
+            $existing,
+            $patterns,
+        )))]);
+
+        return $this;
     }
 
     protected function registerGraphQl(): static
@@ -152,11 +191,6 @@ class ServiceProvider extends AddonServiceProvider
 
     protected function registerPublishables(): static
     {
-
-        $this->publishes([
-            __DIR__.'/../config/meerkat.php' => config_path('meerkat.php'),
-        ], 'meerkat-config');
-
         $this->publishes([
             __DIR__.'/../resources/blueprints/meerkat.yaml' => resource_path('blueprints/meerkat.yaml'),
         ], 'meerkat-blueprints');

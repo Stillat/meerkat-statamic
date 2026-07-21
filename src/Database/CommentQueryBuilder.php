@@ -21,14 +21,16 @@ class CommentQueryBuilder extends BaseQueryBuilder
     const TABLE = 'comments';
 
     public const COLUMNS = [
-        'id', 'thread_id', 'author_id',
+        'id', 'thread_id', 'timestamp_id', 'author_id',
         'site', 'collection', 'is_published',
         'checked_for_spam', 'is_spam', 'is_ham',
+        'is_removed', 'removed_at', 'removed_by', 'removed_reason',
         'moderation_status', 'moderation_reason', 'moderation_notes',
         'moderated_at', 'moderated_by', 'last_activity_at', 'published_at',
         'author_name', 'author_email',
+        'user_ip', 'user_agent', 'referer',
         'depth', 'path', 'visual_path',
-        'parent_id', 'comment_data', 'comment_text',
+        'parent_id', 'replies_count', 'comment_data', 'comment_text',
         'created_at', 'updated_at', 'deleted_at',
 
         'name', 'email',

@@ -5,12 +5,13 @@ declare(strict_types=1);
 namespace Stillat\Meerkat\Tags\Concerns;
 
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Carbon;
 use Statamic\Extensions\Pagination\LengthAwarePaginator;
 use Statamic\Facades\Site;
 use Statamic\Hooks\Payload;
-use Statamic\Tags\Concerns\GetsQuerySelectKeys;
 use Statamic\Tags\Concerns\OutputsItems;
 use Statamic\Tags\Concerns\QueriesConditions;
 use Statamic\Tags\Concerns\QueriesOrderBys;
@@ -24,8 +25,7 @@ use Stillat\Meerkat\Support\CommentVisibility;
 
 trait GetsComments
 {
-    use GetsQuerySelectKeys,
-        OutputsItems,
+    use OutputsItems,
         QueriesConditions,
         QueriesOrderBys,
         QueriesScopes;
@@ -33,13 +33,24 @@ trait GetsComments
     protected function getComments(): mixed
     {
         $query = $this->baseCommentsQuery();
-        $this->querySelect($query);
         $this->querySite($query);
         $this->queryPublished($query);
         $this->queryPastFuture($query);
         $this->queryConditions($query);
         $this->queryOrderBys($query);
         $this->queryScopes($query);
+
+        $paginate = $this->resolvePaginationSize();
+        $limit = $this->positiveIntParam('limit');
+        $offset = $this->nonNegativeIntParam('offset');
+
+        if ($paginate > 0 && $this->paginateParamIsBoolean()) {
+            $limit = null;
+        }
+
+        if (($paginate > 0 || $limit !== null || $offset !== null) && ! $this->params->hasAny(['order_by', 'sort'])) {
+            $query->orderBy('comments.created_at', 'asc')->orderBy('comments.id', 'asc');
+        }
 
         $queryPayload = $this->runHooksWith('comments-query-building', [
             'query' => $query,
@@ -53,11 +64,8 @@ trait GetsComments
             $query = $hookQuery;
         }
 
-        $paginateValue = $this->params->int('paginate');
-        $paginate = is_int($paginateValue) ? $paginateValue : 0;
-
         if ($paginate > 0) {
-            $paginator = $query->paginate($paginate);
+            $paginator = $this->paginateRoots($query, $paginate, $limit, $offset ?? 0);
 
             $resultsPayload = $this->runHooksWith('comments-query-results', [
                 'comments' => $paginator->items(),
@@ -76,6 +84,18 @@ trait GetsComments
             ];
         }
 
+        if ($limit !== null) {
+            $query->limit($limit);
+        }
+
+        if ($offset !== null && $offset > 0) {
+            if ($limit === null) {
+                $query->limit(PHP_INT_MAX);
+            }
+
+            $query->offset($offset);
+        }
+
         $results = $query->get()->all();
 
         $resultsPayload = $this->runHooksWith('comments-query-results', [
@@ -88,6 +108,31 @@ trait GetsComments
         $comments = (new ThreadBuilder)->build($this->hookComments($hookComments));
 
         return $this->output($comments->map(fn (CommentNode $node) => $node->toArray()));
+    }
+
+    protected function paginateRoots(CommentQueryBuilder $query, int $perPage, ?int $limit, int $offset): LengthAwarePaginator
+    {
+        if ($limit === null && $offset === 0) {
+            return $query->paginate($perPage);
+        }
+
+        $page = max(1, (int) Paginator::resolveCurrentPage());
+        $total = max(0, $query->count() - $offset);
+
+        if ($limit !== null) {
+            $total = min($total, $limit);
+        }
+
+        $take = max(0, min($perPage, $total - (($page - 1) * $perPage)));
+
+        $items = $take > 0
+            ? $query->offset($offset + (($page - 1) * $perPage))->limit($take)->get()->all()
+            : [];
+
+        return new LengthAwarePaginator($items, $total, $perPage, $page, [
+            'path' => Paginator::resolveCurrentPath(),
+            'pageName' => 'page',
+        ]);
     }
 
     /** @return array<string, mixed> */
@@ -177,6 +222,11 @@ trait GetsComments
         $includeTrashed = $this->resolveIncludeTrashed();
 
         $constraint = function (mixed $query) use (&$constraint, $includeUnpublished, $includeSpam, $includeTrashed, $hidden): void {
+            // Eager-load closures receive the Relation, not the builder.
+            if ($query instanceof Relation) {
+                $query = $query->getQuery();
+            }
+
             if (! $query instanceof EloquentBuilder) {
                 return;
             }
@@ -203,13 +253,42 @@ trait GetsComments
         return $constraint;
     }
 
-    protected function querySelect(CommentQueryBuilder $query): static
+    private function paginateParamIsBoolean(): bool
     {
-        if ($keys = $this->getQuerySelectKeys(new Comment)) {
-            $query->select($keys);
+        $value = $this->params->get('paginate');
+
+        return $value === true || (is_string($value) && strtolower($value) === 'true');
+    }
+
+    protected function resolvePaginationSize(): int
+    {
+        $value = $this->params->get('paginate');
+
+        if ($this->paginateParamIsBoolean()) {
+            return $this->positiveIntParam('limit') ?? 25;
         }
 
-        return $this;
+        if (is_int($value)) {
+            return max(0, $value);
+        }
+
+        return is_string($value) && is_numeric($value) ? max(0, (int) $value) : 0;
+    }
+
+    private function positiveIntParam(string $key): ?int
+    {
+        $value = $this->params->get($key);
+        $int = is_int($value) ? $value : (is_string($value) && is_numeric($value) ? (int) $value : null);
+
+        return $int !== null && $int > 0 ? $int : null;
+    }
+
+    private function nonNegativeIntParam(string $key): ?int
+    {
+        $value = $this->params->get($key);
+        $int = is_int($value) ? $value : (is_string($value) && is_numeric($value) ? (int) $value : null);
+
+        return $int !== null && $int >= 0 ? $int : null;
     }
 
     protected function querySite(CommentQueryBuilder $query): static

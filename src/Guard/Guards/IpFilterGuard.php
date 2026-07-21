@@ -28,13 +28,9 @@ class IpFilterGuard implements SpamGuard
 
     public function isSpam(Entry $entry, Comment $comment): bool
     {
-        foreach (request()->ips() as $address) {
-            if (in_array($address, $this->blockedIps, true)) {
-                return true;
-            }
-        }
+        $address = $comment->user_ip;
 
-        return false;
+        return is_string($address) && in_array($address, $this->blockedIps, true);
     }
 
     public function reportHam(Entry $entry, Comment $comment): void {}

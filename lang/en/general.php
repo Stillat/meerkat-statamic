@@ -34,7 +34,7 @@ return [
     'check_for_spam' => 'Check for Spam',
     'check_for_spam_confirmation' => 'Check this comment for spam?|Check :count comments for spam?',
     'check_for_spam_button' => 'Check for spam|Check :count for spam',
-    'spam_check_result' => 'Checked :total comment — :flagged flagged as spam.|Checked :total comments — :flagged flagged as spam.',
+    'spam_check_result' => 'Checked :total comment, :flagged flagged as spam.|Checked :total comments, :flagged flagged as spam.',
 
     'mark_as_spam' => 'Mark as Spam',
     'mark_as_spam_confirmation' => 'Mark this comment as spam? It will be unpublished.|Mark :count comments as spam? They will be unpublished.',

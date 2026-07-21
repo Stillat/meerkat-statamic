@@ -35,7 +35,6 @@ class ThreadBuilder
     /** @var list<string> */
     private array $resolveItems = [
         'depth',
-        'email',
         'name',
         'id',
         'is_ham',
@@ -75,7 +74,7 @@ class ThreadBuilder
             }
         }
 
-        return $data;
+        return PublicCommentData::guard($data);
     }
 
     /**

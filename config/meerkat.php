@@ -37,6 +37,10 @@ return [
         'connection' => env('MEERKAT_DATABASE_CONNECTION'),
     ],
 
+    'security' => [
+        'guard_content_variables' => env('MEERKAT_GUARD_CONTENT_VARIABLES', true),
+    ],
+
     'form' => [
         'blueprint' => 'meerkat',
         'honeypot' => 'username',
@@ -133,5 +137,7 @@ return [
         'enabled' => env('MEERKAT_GRAPHQL_ENABLED', false),
         'per_page' => 15,
         'max_per_page' => 100,
+
+        'max_depth' => 25,
     ],
 ];

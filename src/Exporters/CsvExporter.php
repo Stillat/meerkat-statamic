@@ -8,7 +8,6 @@ use Illuminate\Support\Arr;
 use League\Csv\Writer;
 use SplTempFileObject;
 use Statamic\Fields\Field;
-use Stillat\Meerkat\Database\Models\Comment;
 
 class CsvExporter extends Exporter
 {
@@ -43,7 +42,7 @@ class CsvExporter extends Exporter
 
         $useDisplay = Arr::get($this->config, 'headers', config('statamic.forms.csv_headers', 'handle')) === 'display';
 
-        $extraDataKeys = $this->collectCommentDataKeys();
+        $extraDataKeys = $this->commentDataColumns();
 
         $columns = array_merge(self::COLUMNS, $extraDataKeys);
 
@@ -53,7 +52,7 @@ class CsvExporter extends Exporter
         ));
 
         foreach ($this->comments as $comment) {
-            $writer->insertOne($this->row($comment, $columns, $extraDataKeys));
+            $writer->insertOne($this->row($comment->toExportArray(), $columns, $extraDataKeys));
         }
 
         return (string) $writer;
@@ -70,35 +69,27 @@ class CsvExporter extends Exporter
     }
 
     /** @return list<string> */
-    private function collectCommentDataKeys(): array
+    private function commentDataColumns(): array
     {
-        $keys = [];
+        $handles = [];
 
-        foreach ($this->comments as $comment) {
-            $data = $comment->toExportArray()['comment_data'] ?? [];
-
-            if (! is_array($data)) {
-                continue;
-            }
-
-            foreach (array_keys($data) as $key) {
-                if (is_string($key)) {
-                    $keys[$key] = true;
-                }
+        foreach ($this->getBlueprint()->fields()->all()->keys() as $handle) {
+            if (is_string($handle) && ! in_array($handle, self::COLUMNS, true)) {
+                $handles[] = $handle;
             }
         }
 
-        return array_keys($keys);
+        return $handles;
     }
 
     /**
+     * @param  array<string, mixed>  $export
      * @param  list<string>  $columns
      * @param  list<string>  $extraDataKeys
      * @return list<string>
      */
-    private function row(Comment $comment, array $columns, array $extraDataKeys): array
+    private function row(array $export, array $columns, array $extraDataKeys): array
     {
-        $export = $comment->toExportArray();
         $data = $export['comment_data'] ?? [];
         $data = is_array($data) ? $data : [];
 

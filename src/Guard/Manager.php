@@ -41,10 +41,25 @@ class Manager
 
     public function isSpam(Entry $entry, Comment $comment): bool
     {
+        $firstFailure = null;
+
         foreach ($this->guards() as $guard) {
-            if ($guard->isSpam($entry, $comment)) {
-                return true;
+            try {
+                if ($guard->isSpam($entry, $comment)) {
+                    return true;
+                }
+            } catch (Throwable $e) {
+                $firstFailure ??= $e;
+
+                Log::warning('Meerkat spam guard isSpam failed; continuing with remaining guards.', [
+                    'guard' => $guard::class,
+                    'exception' => $e->getMessage(),
+                ]);
             }
+        }
+
+        if ($firstFailure instanceof Throwable) {
+            throw $firstFailure;
         }
 
         return false;

@@ -3,18 +3,17 @@
 declare(strict_types=1);
 
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Stillat\Meerkat\Database\Migration;
 
 return new class extends Migration
 {
     public function up()
     {
-        if (Schema::hasTable('threads')) {
+        if ($this->hasMeerkatTable('threads', ['thread_id', 'cached_title'])) {
             return;
         }
 
-        Schema::create('threads', function (Blueprint $table) {
+        $this->schema()->create('threads', function (Blueprint $table) {
             $table->id();
             $table->string('thread_id')->unique('meerkat_threads_thread_id_unique');
             $table->string('entry_id')->nullable()->index();
@@ -28,6 +27,6 @@ return new class extends Migration
 
     public function down()
     {
-        Schema::dropIfExists('threads');
+        $this->dropMeerkatTable('threads', ['thread_id', 'cached_title']);
     }
 };

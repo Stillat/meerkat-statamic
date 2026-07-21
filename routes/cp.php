@@ -18,8 +18,8 @@ Route::prefix('meerkat')->group(function () {
         Route::post('check-outstanding', [CommentController::class, 'checkOutstandingForSpam'])->name('meerkat.comments.check-outstanding-for-spam');
     });
 
-    Route::post('actions', [CommentActionController::class, 'run'])->name('meerkat.comments.actions.run');
-    Route::post('actions/list', [CommentActionController::class, 'bulkActions'])->name('meerkat.comments.actions.bulk');
+    Route::post('actions', [CommentActionController::class, 'run'])->middleware('can:view comments')->name('meerkat.comments.actions.run');
+    Route::post('actions/list', [CommentActionController::class, 'bulkActions'])->middleware('can:view comments')->name('meerkat.comments.actions.bulk');
 
     Route::prefix('comment')->group(function () {
         Route::get('reply-data/{parent}', [CommentController::class, 'getReplyData'])->name('meerkat.comment.reply-data');

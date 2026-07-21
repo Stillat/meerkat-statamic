@@ -6,11 +6,14 @@ namespace Stillat\Meerkat\Actions;
 
 use Illuminate\Support\Collection;
 use Statamic\Actions\Action;
+use Stillat\Meerkat\Actions\Concerns\AuthorizesCommentActions;
 use Stillat\Meerkat\Contracts\CommentRepository;
 use Stillat\Meerkat\Database\Models\Comment;
 
 class RemoveCommentSubtree extends Action
 {
+    use AuthorizesCommentActions;
+
     /** @var bool */
     protected $dangerous = true;
 
@@ -40,24 +43,18 @@ class RemoveCommentSubtree extends Action
         return __('meerkat::general.remove_subtree_button');
     }
 
-    /** @param Collection<int, Comment> $items */
-    public function visibleToBulk($items): bool
+    protected function permission(): string
     {
-        return auth()->user()?->can('delete comments') ?? false;
+        return 'delete comments';
     }
 
     /** @param mixed $item */
     public function visibleTo($item): bool
     {
-        if (! $item instanceof Comment) {
-            return false;
-        }
-
-        if (! auth()->user()?->can('delete comments')) {
-            return false;
-        }
-
-        return ! (bool) $item->is_removed && $item->replies_count > 0;
+        return $item instanceof Comment
+            && $this->authorize(auth()->user(), $item)
+            && ! (bool) $item->is_removed
+            && $item->children()->exists();
     }
 
     /**

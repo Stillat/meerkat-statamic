@@ -17,8 +17,8 @@ abstract class Exporter
     /** @var array<string, mixed> */
     protected array $config = [];
 
-    /** @var list<Comment> */
-    protected array $comments = [];
+    /** @var iterable<int, Comment> */
+    protected iterable $comments = [];
 
     abstract public function export(): string;
 
@@ -30,8 +30,8 @@ abstract class Exporter
         return $this;
     }
 
-    /** @param list<Comment> $comments */
-    public function setComments(array $comments): static
+    /** @param iterable<int, Comment> $comments */
+    public function setComments(iterable $comments): static
     {
         $this->comments = $comments;
 

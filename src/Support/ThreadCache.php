@@ -10,12 +10,35 @@ class ThreadCache
 {
     public static function key(string $threadId, bool $publishedOnly): string
     {
-        return 'meerkat.thread.'.md5($threadId.'|'.($publishedOnly ? 'published' : 'all'));
+        $viewer = auth()->id();
+        $viewer = is_string($viewer) || is_int($viewer) ? (string) $viewer : 'guest';
+
+        return 'meerkat.thread.'.md5(implode('|', [
+            $threadId,
+            (string) self::generation($threadId),
+            $publishedOnly ? 'published' : 'all',
+            $viewer,
+        ]));
     }
 
     public static function invalidate(string $threadId): void
     {
-        Cache::forget(self::key($threadId, true));
-        Cache::forget(self::key($threadId, false));
+        $key = self::generationKey($threadId);
+
+        if (! Cache::add($key, 1)) {
+            Cache::increment($key);
+        }
+    }
+
+    private static function generation(string $threadId): int
+    {
+        $generation = Cache::get(self::generationKey($threadId), 0);
+
+        return is_int($generation) ? $generation : 0;
+    }
+
+    private static function generationKey(string $threadId): string
+    {
+        return 'meerkat.thread-generation.'.md5($threadId);
     }
 }

@@ -238,9 +238,10 @@ class CommentController
                     }
 
                 } catch (Throwable $throwable) {
-                    Log::info('Meerkat: Checking for spam failed.', [
-                        'exception' => $throwable,
-                        'comment' => $comment,
+                    Log::warning('Meerkat: Checking for spam failed.', [
+                        'exception' => $throwable->getMessage(),
+                        'comment_id' => $comment->id,
+                        'thread_id' => $comment->thread_id,
                     ]);
 
                     if ($this->unpublishOnGuardFailure()) {
@@ -302,16 +303,12 @@ class CommentController
         $visualId = Identifiers::visualId($comment->id);
         $comment->materializePath($parentComment);
 
-        try {
-            $comment->skipHooks = true;
-            $pathSaved = $comment->save();
-        } finally {
-            $comment->skipHooks = false;
-        }
-
-        if (! $pathSaved) {
-            return $this->formFailure($params, []);
-        }
+        // Persist the path directly: the id is only known after the insert, and
+        // the mirror file location does not depend on these columns.
+        Comment::query()->whereKey($comment->id)->update([
+            'path' => $comment->path,
+            'visual_path' => $comment->visual_path,
+        ]);
 
         $this->runHooksWith('after-saved-comment', [
             'comment' => $comment,

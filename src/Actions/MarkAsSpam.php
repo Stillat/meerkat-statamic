@@ -6,13 +6,14 @@ namespace Stillat\Meerkat\Actions;
 
 use Illuminate\Support\Collection;
 use Statamic\Actions\Action;
+use Stillat\Meerkat\Actions\Concerns\AuthorizesCommentActions;
 use Stillat\Meerkat\Actions\Concerns\ReportsBulkOutcome;
 use Stillat\Meerkat\Contracts\CommentRepository;
 use Stillat\Meerkat\Database\Models\Comment;
 
 class MarkAsSpam extends Action
 {
-    use ReportsBulkOutcome;
+    use AuthorizesCommentActions, ReportsBulkOutcome;
 
     public function __construct(
         protected CommentRepository $comments
@@ -35,28 +36,18 @@ class MarkAsSpam extends Action
         return __('meerkat::general.mark_as_spam_button');
     }
 
-    /** @param Collection<int, Comment> $items */
-    public function visibleToBulk($items): bool
+    protected function permission(): string
     {
-        return auth()->user()?->can('report comment spam') ?? false;
+        return 'report comment spam';
     }
 
     /** @param mixed $item */
     public function visibleTo($item): bool
     {
-        if (! $item instanceof Comment) {
-            return false;
-        }
-
-        if (! auth()->user()?->can('report comment spam')) {
-            return false;
-        }
-
-        if ($item->is_ham) {
-            return false;
-        }
-
-        return ! $item->is_spam;
+        return $item instanceof Comment
+            && $this->authorize(auth()->user(), $item)
+            && ! $item->is_ham
+            && ! $item->is_spam;
     }
 
     /**

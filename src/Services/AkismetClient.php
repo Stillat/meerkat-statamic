@@ -40,7 +40,7 @@ class AkismetClient
                 'Akismet returned an unexpected comment-check response: '
                 .($body === '' ? '(empty body)' : $body)
                 .($response->header('X-akismet-debug-help') !== ''
-                    ? ' — '.$response->header('X-akismet-debug-help')
+                    ? ': '.$response->header('X-akismet-debug-help')
                     : '')
             );
         }
@@ -81,14 +81,16 @@ class AkismetClient
         try {
             return Http::asForm()
                 ->withHeaders(['Accept' => 'text/plain'])
+                ->connectTimeout(5)
+                ->timeout(10)
                 ->post("https://{$apiKey}.{$host}/1.1/{$path}", array_merge([
                     'blog' => Settings::get('akismet.blog_url'),
                 ], array_filter($payload, fn ($value) => $value !== null && $value !== '')))
                 ->throw();
         } catch (RequestException $e) {
-            throw new SpamGuardException("Could not reach Akismet ({$path}): HTTP {$e->response->status()}.", 0, $e);
+            throw new SpamGuardException("Could not reach Akismet ({$path}): HTTP {$e->response->status()}. ".str_replace($apiKey, '[redacted]', $e->getMessage()));
         } catch (ConnectionException $e) {
-            throw new SpamGuardException("Could not reach Akismet ({$path}): connection failed.", 0, $e);
+            throw new SpamGuardException("Could not reach Akismet ({$path}): connection failed. ".str_replace($apiKey, '[redacted]', $e->getMessage()));
         }
     }
 }

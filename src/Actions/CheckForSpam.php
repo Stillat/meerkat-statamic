@@ -6,11 +6,14 @@ namespace Stillat\Meerkat\Actions;
 
 use Illuminate\Support\Collection;
 use Statamic\Actions\Action;
+use Stillat\Meerkat\Actions\Concerns\AuthorizesCommentActions;
 use Stillat\Meerkat\Contracts\CommentRepository;
 use Stillat\Meerkat\Database\Models\Comment;
 
 class CheckForSpam extends Action
 {
+    use AuthorizesCommentActions;
+
     public function __construct(
         protected CommentRepository $comments
     ) {
@@ -32,24 +35,17 @@ class CheckForSpam extends Action
         return __('meerkat::general.check_for_spam_button');
     }
 
-    /** @param Collection<int, Comment> $items */
-    public function visibleToBulk($items): bool
+    protected function permission(): string
     {
-        return auth()->user()?->can('check comment spam') ?? false;
+        return 'check comment spam';
     }
 
     /** @param mixed $item */
     public function visibleTo($item): bool
     {
-        if (! $item instanceof Comment) {
-            return false;
-        }
-
-        if (! auth()->user()?->can('check comment spam')) {
-            return false;
-        }
-
-        return ! $item->checked_for_spam || ! $item->is_spam;
+        return $item instanceof Comment
+            && $this->authorize(auth()->user(), $item)
+            && (! $item->checked_for_spam || ! $item->is_spam);
     }
 
     /**

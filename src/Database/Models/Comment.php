@@ -132,7 +132,7 @@ class Comment extends Model implements Augmentable, BulkAugmentable, ResolvesVal
     protected static function booted()
     {
         static::created(function (Comment $comment) {
-            if ($comment->parent_id && $comment->is_published) {
+            if ($comment->parent_id && self::countsPublicly($comment)) {
                 self::where('comments.id', $comment->parent_id)
                     ->increment('replies_count');
             }
@@ -149,17 +149,12 @@ class Comment extends Model implements Augmentable, BulkAugmentable, ResolvesVal
         });
 
         static::updated(function (Comment $comment) {
-            if ($comment->parent_id && $comment->isDirty('is_published')) {
-                $wasPublished = $comment->getOriginal('is_published');
-                $isNowPublished = $comment->is_published;
+            $counted = self::countsPublicly($comment, original: true);
+            $counts = self::countsPublicly($comment);
 
-                if (! $wasPublished && $isNowPublished) {
-                    self::where('comments.id', $comment->parent_id)
-                        ->increment('replies_count');
-                } elseif ($wasPublished && ! $isNowPublished) {
-                    self::where('comments.id', $comment->parent_id)
-                        ->decrement('replies_count');
-                }
+            if ($comment->parent_id && $counted !== $counts) {
+                self::where('comments.id', $comment->parent_id)
+                    ->{$counts ? 'increment' : 'decrement'}('replies_count');
             }
 
             if ($comment->isDirty('last_activity_at') && $comment->parent_id) {
@@ -169,16 +164,22 @@ class Comment extends Model implements Augmentable, BulkAugmentable, ResolvesVal
         });
 
         static::deleted(function (Comment $comment) {
-            if ($comment->parent_id && $comment->is_published) {
+            $alreadyCountedOut = $comment->isForceDeleting() && $comment->getOriginal('deleted_at') !== null;
+
+            if ($comment->parent_id && ! $alreadyCountedOut && self::countsPublicly($comment)) {
                 self::where('comments.id', $comment->parent_id)
                     ->decrement('replies_count');
             }
 
             self::touchThreadMetric($comment->thread_id);
+
+            if (! $comment->isForceDeleting()) {
+                Mirror::handleSaved($comment);
+            }
         });
 
         static::restored(function (Comment $comment) {
-            if ($comment->parent_id && $comment->is_published) {
+            if ($comment->parent_id && self::countsPublicly($comment)) {
                 self::where('comments.id', $comment->parent_id)
                     ->increment('replies_count');
             }
@@ -209,6 +210,17 @@ class Comment extends Model implements Augmentable, BulkAugmentable, ResolvesVal
         static::forceDeleted(function (Comment $comment) {
             Mirror::handleForceDeleted($comment);
         });
+    }
+
+    private static function countsPublicly(Comment $comment, bool $original = false): bool
+    {
+        if ($original) {
+            return (bool) $comment->getOriginal('is_published')
+                && ! (bool) $comment->getOriginal('is_removed')
+                && ! (bool) $comment->getOriginal('is_spam');
+        }
+
+        return $comment->is_published && ! $comment->is_removed && ! $comment->is_spam;
     }
 
     private static function touchThreadMetric(?string $threadId): void

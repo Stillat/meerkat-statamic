@@ -3,18 +3,17 @@
 declare(strict_types=1);
 
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Stillat\Meerkat\Database\Migration;
 
 return new class extends Migration
 {
     public function up()
     {
-        if (Schema::hasTable('comments')) {
+        if ($this->hasMeerkatTable('comments', ['timestamp_id', 'comment_data'])) {
             return;
         }
 
-        Schema::create('comments', function (Blueprint $table) {
+        $this->schema()->create('comments', function (Blueprint $table) {
             $table->id();
             $table->string('thread_id')->index();
             $table->string('timestamp_id', 32)->nullable();
@@ -62,6 +61,6 @@ return new class extends Migration
 
     public function down()
     {
-        Schema::dropIfExists('comments');
+        $this->dropMeerkatTable('comments', ['timestamp_id', 'comment_data']);
     }
 };
