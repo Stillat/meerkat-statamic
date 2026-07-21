@@ -6,7 +6,7 @@ Effective date: July 18, 2026.
 
 This Meerkat Commercial License (the "License") is an agreement between Stillat, LLC ("Stillat") and the individual or legal entity exercising rights under this License ("you"). By downloading, installing, copying, modifying, or using Meerkat 4, you agree to this License. If you exercise rights on behalf of an organization, you represent that you have authority to bind that organization to this License.
 
-## tl;dr
+## In plain English
 
 - Development, testing, continuous integration, demonstrations, and staging are free.
 - Purchase one Meerkat license for each independent production Statamic installation.
