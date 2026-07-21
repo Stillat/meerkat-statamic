@@ -489,9 +489,6 @@ class CommentRepository implements CommentRepositoryContract
         $threadId = $comment->thread_id;
 
         try {
-            // The spam determination can call an external service, so it runs
-            // without a row lock. The verdict is then persisted under a lock so
-            // concurrent checks serialize and cannot double-adjust replies_count.
             $spam = app(CommentSpamCheck::class)->resolve($entry, $comment);
             $entry = $spam['entry'];
             $comment = $spam['comment'];
@@ -555,10 +552,6 @@ class CommentRepository implements CommentRepositoryContract
         }
     }
 
-    /**
-     * Resolves what to do with a spam comment: 'delete', 'unpublish', or
-     * 'none'. For 'unpublish' the comment is left unpublished in place.
-     */
     private function resolveSpamAction(Comment $comment): string
     {
         $shouldDelete = $this->autoDeleteSpam();
@@ -605,8 +598,6 @@ class CommentRepository implements CommentRepositoryContract
         $comment->parent_id = $parent->id;
         $comment->thread_id = $parent->thread_id;
 
-        // Inherit the site and collection from the thread's entry so replies
-        // stay consistent with the canonical thread, even on shared threads.
         $entry = app(ThreadResolver::class)->resolveEntry($parent->thread_id)
             ?? EntryApi::find($parent->thread_id);
         $comment->site = ($entry instanceof Entry ? $this->entryHandle($entry->site()) : null) ?? $parent->site;

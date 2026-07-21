@@ -100,8 +100,6 @@ class Installer
             return is_writable($root) ? true : "Mirror path [{$root}] is not writable";
         }
 
-        // The mirror writer creates missing directories recursively, so the
-        // nearest existing ancestor is what must be writable.
         $path = dirname($root);
 
         while (! is_dir($path) && dirname($path) !== $path) {

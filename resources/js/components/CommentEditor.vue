@@ -68,8 +68,6 @@ function fetch() {
 }
 
 function save() {
-    // Never save against an empty form that failed to load; doing so would
-    // blank the comment.
     if (saving.value || loading.value || loadFailed.value) return;
 
     const hookPayload = {

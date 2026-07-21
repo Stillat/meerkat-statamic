@@ -165,10 +165,6 @@
 
             return replyInput;
         },
-        // When the reply form is cloned from the main comment form, strip the
-        // duplicated element ids (which break label associations) and clear
-        // author-entered values so the reply starts blank. Hidden fields such
-        // as the CSRF token and signed context are preserved.
         prepareClonedForm: function (form) {
             form.querySelectorAll('input, textarea, select').forEach(function (control) {
                 control.removeAttribute('id');
@@ -184,8 +180,6 @@
                 label.removeAttribute('for');
             });
         },
-        // Blocks a second submission of the same form before the page
-        // navigates, preventing accidental double-posts.
         guardAgainstDoubleSubmit: function (form) {
             let submitting = false;
 
@@ -293,8 +287,6 @@
 
                     _this.data.ReplyForm = replyForm;
 
-                    // Read from the bound link (el), not event.target, which
-                    // may be a child element (icon/span) inside the link.
                     let replyingTo = el.getAttribute('data-meerkat-reply-to');
 
                     replyForm.appendChild(_this.makeReplyInput(replyingTo));
