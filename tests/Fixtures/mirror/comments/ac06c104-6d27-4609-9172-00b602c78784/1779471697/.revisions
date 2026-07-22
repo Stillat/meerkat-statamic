@@ -1,0 +1,22 @@
+revision: 1779471705
+changes:
+  -
+    timestamp: 1779471698
+    oko: '["id","name","email","published"]'
+    new: |-
+      a:5:{s:2:"id";s:10:"1779471697";s:4:"name";s:12:"Edna Lacroix";s:5:"email";s:16:"edna@example.com";s:9:"published";b:1;s:7:"content";s:53:"Second draft — phrasing reworked, still not happy.
+      ";}
+    old: |-
+      a:5:{s:2:"id";s:10:"1779471697";s:4:"name";s:12:"Edna Lacroix";s:5:"email";s:16:"edna@example.com";s:9:"published";b:1;s:7:"content";s:42:"First draft of my comment. Typos and all.
+      ";}
+    user: null
+  -
+    timestamp: 1779471705
+    oko: '["id","name","email","published"]'
+    new: |-
+      a:5:{s:2:"id";s:10:"1779471697";s:4:"name";s:12:"Edna Lacroix";s:5:"email";s:16:"edna@example.com";s:9:"published";b:1;s:7:"content";s:36:"Final version of my edited comment.
+      ";}
+    old: |-
+      a:5:{s:2:"id";s:10:"1779471697";s:4:"name";s:12:"Edna Lacroix";s:5:"email";s:16:"edna@example.com";s:9:"published";b:1;s:7:"content";s:53:"Second draft — phrasing reworked, still not happy.
+      ";}
+    user: null

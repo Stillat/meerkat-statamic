@@ -1,7 +1,0 @@
-<div class="comment-display__author-reply" v-on:click="$emit('author-clicked', author)">
-    <span class="meerkat__inline-callout"><strong>{{ trans('display.author_in_reply_to') }}</strong></span>:
-    <div class="comment-display__author-reply-avatar">
-        <component :is="avatarDriver" v-bind="getAuthor()"></component>
-    </div>
-    <span :title="author.name">{{ author.name | meerkatTruncate(15) }}</span>
-</div>

@@ -1,509 +1,455 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Stillat\Meerkat\Tags;
 
-use Illuminate\Contracts\Container\BindingResolutionException;
-use Statamic\Modifiers\CoreModifiers;
-use Stillat\Meerkat\Addon as MeerkatAddon;
-use Stillat\Meerkat\Concerns\GetsHiddenContext;
-use Stillat\Meerkat\Core\Authoring\InitialsGenerator;
-use Stillat\Meerkat\Core\Configuration;
-use Stillat\Meerkat\Core\Contracts\Data\DataSetContract;
-use Stillat\Meerkat\Core\Contracts\Parsing\SanitationManagerContract;
-use Stillat\Meerkat\Core\Contracts\Threads\ContextResolverContract;
-use Stillat\Meerkat\Core\Contracts\Threads\ThreadManagerContract;
-use Stillat\Meerkat\Core\Data\DataQuery;
-use Stillat\Meerkat\Core\Data\Filters\CommentFilterManager;
-use Stillat\Meerkat\Core\Parsing\ExpressionParser;
-use Stillat\Meerkat\Core\Support\TypeConversions;
-use Stillat\Meerkat\Exceptions\TemplateTagsException;
-use Stillat\Meerkat\Forms\MeerkatForm;
-use Stillat\Meerkat\PathProvider;
-use Stillat\Meerkat\Tags\Authors\InitialsColors;
-use Stillat\Meerkat\Tags\Authors\InitialsTag;
-use Stillat\Meerkat\Tags\Responses\CollectionRenderer;
-use Stillat\Meerkat\Tags\Testing\OutputThreadDebugInformation;
+use Illuminate\Support\ViewErrorBag;
+use Statamic\Contracts\Entries\Entry;
+use Statamic\Facades\Entry as EntryFacade;
+use Statamic\Facades\Site as SiteFacade;
+use Statamic\Facades\User as UserFacade;
+use Statamic\Fields\Value;
+use Statamic\Sites\Site;
+use Statamic\Tags\Tags;
+use Stillat\Meerkat\Comments\PublicCommentData;
+use Stillat\Meerkat\Contracts\CommentRepository;
+use Stillat\Meerkat\Database\Models\Comment;
+use Stillat\Meerkat\Facades\Comments;
+use Stillat\Meerkat\Services\ThreadMetricsManager;
+use Stillat\Meerkat\Services\ThreadResolver;
+use Stillat\Meerkat\Support\CommentVisibility;
+use Stillat\Meerkat\Support\FrontendAssets;
+use Stillat\Meerkat\Tags\Concerns\GetsComments;
+use Stillat\Meerkat\Tags\Concerns\RendersForm;
 
-/**
- * Class Meerkat
- *
- * The main Meerkat Antlers tags integration.
- *
- * @ls tags
- *
- * @since 2.0.0
- */
-class Meerkat extends MeerkatTag
+class Meerkat extends Tags
 {
-    use GetsHiddenContext;
+    use GetsComments,
+        RendersForm;
 
-    private $threadManager = null;
-
-    /**
-     * The SanitationManagerContract implementation instance.
-     *
-     * @var SanitationManagerContract
-     */
-    private $sanitizer = null;
-
-    /**
-     * The context resolver implementation instance.
-     *
-     * @var ContextResolverContract
-     */
-    private $contextResolver = null;
-
-    /**
-     * The Meerkat Core configuration container.
-     *
-     * @var Configuration
-     */
-    private $config;
-
-    public function __construct(Configuration $config,
-                                CommentFilterManager $filterManager,
-                                ThreadManagerContract $threadManager,
-                                SanitationManagerContract $sanitizer,
-                                ExpressionParser $expressionParser)
+    protected function getThreadId(): ?string
     {
-        parent::__construct($filterManager, $expressionParser);
 
-        $this->config = $config;
-        $this->threadManager = $threadManager;
-        $this->sanitizer = $sanitizer;
-    }
+        if ($this->params->hasAny(['thread', 'from_thread'])) {
+            $selection = $this->parseThreadSelection(
+                $this->params->get('thread') ?? $this->params->get('from_thread')
+            );
 
-    /**
-     * {{ meerkat }}
-     *
-     * @return string
-     */
-    public function index()
-    {
-        return '';
-    }
+            if ($selection === null) {
+                return null;
+            }
 
-    /**
-     * {{ meerkat:gravatar }}
-     *
-     * @return string
-     */
-    public function gravatar()
-    {
-        $gravatarValue = $this->gravatarValue();
-
-        return '//www.gravatar.com/avatar/'.$gravatarValue.'?';
-    }
-
-    /**
-     * {{ meerkat:gravatar_value }}
-     *
-     * @return string
-     */
-    public function gravatarValue()
-    {
-        $email = '';
-
-        if ($this->context !== null) {
-            $email = $this->context->get('email');
+            return $selection[0] ?? null;
         }
 
-        return md5($email);
-    }
+        if ($shared = $this->resolveSharedContextValue()) {
+            return $this->resolveThreadReference($shared);
+        }
 
-    /**
-     * {{ meerkat:identicon }}
-     *
-     * @return string
-     */
-    public function identicon()
-    {
-        $value = $this->identiconValue();
+        $value = $this->context['id'] ?? null;
 
-        return 'https://avatars.dicebear.com/v2/identicon/'.$value.'.svg';
-    }
+        if (! $value && isset($this->context['page'])) {
+            $page = $this->context['page'];
 
-    /**
-     * {{ meerkat:identicon_value }}
-     *
-     * @return string
-     */
-    public function identiconValue()
-    {
-        return $this->gravatarValue();
-    }
-
-    /**
-     * {{ meerkat:jdenticon }}
-     */
-    public function jdenticon()
-    {
-        $value = $this->jdenticonValue();
-
-        return 'https://avatars.dicebear.com/v2/jdenticon/'.$value.'.svg';
-    }
-
-    /**
-     * {{ meerkat:jdenticon_value }}
-     *
-     * @return string
-     */
-    public function jdenticonValue()
-    {
-        return $this->gravatarValue();
-    }
-
-    /**
-     * {{ meerkat:simple_background_color }}
-     *
-     * @return string
-     */
-    public function simpleBackgroundColor()
-    {
-        return 'rgb(142,142,147)';
-    }
-
-    /**
-     * {{ meerkat:simple_foreground_color }}
-     *
-     * @return string
-     */
-    public function simpleForegroundColor()
-    {
-        return '#ffffff';
-    }
-
-    /**
-     * {{ meerkat:initials_background_color }}
-     *
-     * @return string
-     */
-    public function initialsBackgroundColor()
-    {
-        $value = $this->getParameterValue('value', null);
-
-        if ($value === null) {
-            if ($this->context !== null) {
-                $value = $this->context->get('name');
-                $value = InitialsGenerator::getInitials($value);
+            if (is_object($page) && method_exists($page, 'id')) {
+                $value = $page->id();
             }
         }
 
-        if (mb_strlen(trim($value)) > 0) {
-            $colors = InitialsColors::getColors($value[0]);
+        $value = $value instanceof Value ? $value->value() : $value;
 
-            if ($colors !== null && is_array($colors) && count($colors) === 2) {
-                return $colors[0];
-            }
+        $page = $this->context['page'] ?? null;
+        if ($page instanceof Entry) {
+            return app(ThreadResolver::class)->forEntry($page);
         }
 
-        return InitialsColors::$defaultBackgroundColor;
-    }
+        $entry = $value ? EntryFacade::find($value) : null;
 
-    /**
-     * {{ meerkat:initials_foreground_color }}
-     *
-     * @return string
-     */
-    public function initialsForegroundColor()
-    {
-        $value = $this->getParameterValue('value', null);
-
-        if ($value === null) {
-            if ($this->context !== null) {
-                $value = $this->context->get('name');
-                $value = InitialsGenerator::getInitials($value);
-            }
+        if ($entry) {
+            return app(ThreadResolver::class)->forEntry($entry);
         }
 
-        if (mb_strlen(trim($value)) > 0) {
-            $colors = InitialsColors::getColors($value[0]);
+        return is_string($value) || is_int($value) ? (string) $value : null;
+    }
 
-            if ($colors !== null && is_array($colors) && count($colors) === 2) {
-                return $colors[1];
-            }
+    /**
+     * @return list<string>|null
+     */
+    protected function getThreadSelection(): ?array
+    {
+        if ($this->params->hasAny(['thread', 'from_thread'])) {
+            return $this->parseThreadSelection(
+                $this->params->get('thread') ?? $this->params->get('from_thread')
+            );
         }
 
-        return InitialsColors::$defaultForegroundColor;
+        $single = $this->getThreadId();
+
+        return ($single === null || $single === '') ? [] : [$single];
     }
 
     /**
-     * Renders a Meerkat form.
-     *
-     * Maps to {{ meerkat:create }}
-     * Alias of {{ meerkat:form }}
-     *
-     * @return string
-     *
-     * @throws BindingResolutionException
-     * @throws TemplateTagsException
+     * @return list<string>|null Null for a wildcard; otherwise resolved thread IDs.
      */
-    public function create()
+    protected function parseThreadSelection(mixed $raw): ?array
     {
-        return $this->form();
-    }
-
-    /**
-     * Renders a Meerkat form.
-     *
-     * Maps to {{ meerkat:form }}
-     *
-     * @return string
-     *
-     * @throws BindingResolutionException
-     * @throws TemplateTagsException
-     */
-    public function form()
-    {
-        return $this->renderDynamic(MeerkatForm::class);
-    }
-
-    /**
-     * @param  null  $instanceCallback
-     * @return string
-     *
-     * @throws BindingResolutionException
-     * @throws TemplateTagsException
-     */
-    private function renderDynamic($className, $instanceCallback = null)
-    {
-        if ($className !== null && mb_strlen(trim($className)) > 0) {
-            /** @var MeerkatTag $instance */
-            $instance = app()->make($className);
-            $instance->setFromContext($this);
-
-            if ($instanceCallback !== null && is_callable($instanceCallback)) {
-                $instance = $instanceCallback($instance);
-
-                if ($instance === null || ($instance instanceof MeerkatTag) === false) {
-                    throw new TemplateTagsException('Instance callback must return instance of '.$className);
-                }
-            }
-
-            return $instance->render();
+        if ($raw instanceof Value) {
+            $raw = $raw->value();
         }
 
-        return '';
+        if (! is_array($raw) && ! is_string($raw) && ! is_int($raw)) {
+            return [];
+        }
+
+        $tokens = is_array($raw) ? $raw : explode('|', (string) $raw);
+
+        $tokens = array_values(array_filter(
+            array_map(static fn (mixed $token): string => is_string($token) || is_int($token) ? trim((string) $token) : '', $tokens),
+            static fn (string $token) => $token !== ''
+        ));
+
+        if (in_array('*', $tokens, true)) {
+            return null;
+        }
+
+        $ids = [];
+
+        foreach ($tokens as $token) {
+            $ids[] = $this->resolveThreadReference($token);
+        }
+
+        return array_values(array_unique($ids));
     }
 
-    /**
-     * Display theme Meerkat diagnostics data, for the current scope.
-     *
-     * Maps to {{ meerkat:debug }}
-     *
-     * @return string
-     *
-     * @throws BindingResolutionException
-     * @throws TemplateTagsException
-     */
-    public function debug()
+    private function resolveSharedContextValue(): ?string
     {
-        return $this->renderDynamic(OutputThreadDebugInformation::class);
+        $shareField = config('meerkat.publishing.share_field');
+
+        if (! $shareField || ! isset($this->context[$shareField])) {
+            return null;
+        }
+
+        $raw = $this->context[$shareField];
+
+        if ($raw instanceof Value) {
+            $raw = $raw->value();
+        }
+
+        if (is_array($raw)) {
+            $raw = $raw[0] ?? null;
+        }
+
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+
+        return is_string($raw) || is_int($raw) ? (string) $raw : null;
     }
 
-    /**
-     * Returns a value indicating if comments are enabled for the current page context.
-     *
-     * {{ meerkat:comments-enabled }}
-     *
-     * @return bool
-     */
-    public function commentsEnabled()
+    private function resolveThreadReference(string $value): string
     {
-        return $this->threadManager->areCommentsEnabledForContext($this->getHiddenContext());
+        return app(ThreadResolver::class)->resolveReference($value) ?? $value;
     }
 
-    public function commentCount()
+    public function commentCount(): int
     {
-        return $this->count();
-    }
+        $selection = $this->getThreadSelection();
+        $site = $this->effectiveSiteParam();
+        $visibility = app(CommentVisibility::class);
 
-    /**
-     * Returns the number of published, not-spam comments.
-     *
-     * @return int
-     */
-    public function count()
-    {
-        $contextId = $this->getHiddenContext();
-        $this->setFromContext($this);
-        $thread = $this->threadManager->findById($contextId);
+        if ($selection === null) {
+            $query = Comment::query();
+            $visibility->applyPublicVisibility($query);
+            $visibility->excludeOrphanedSubtrees($query);
+
+            if ($site !== null) {
+                $query->where('comments.site', $site);
+            }
+
+            return $query->count();
+        }
 
         $count = 0;
 
-        if ($thread !== null) {
-            /** @var DataSetContract $queryResults */
-            $queryResults = $thread->query(function (DataQuery $builder) {
-                $this->applyParamFiltersToQuery($builder);
-
-                return $builder;
-            });
-
-            $count = $queryResults->count();
-        }
-
-        if ($this->hasParameterValue('format_number')) {
-            $numberFormat = explode('|', $this->getParameterValue('format_number', '1|.|,'));
-
-            $modifiers = new CoreModifiers();
-
-            return $modifiers->formatNumber($count, $numberFormat);
+        foreach ($selection as $threadId) {
+            if ($threadId !== '') {
+                $count += $this->countForThread($threadId, $site, $visibility);
+            }
         }
 
         return $count;
     }
 
-    /**
-     * {{ meerkat:all-comments }}
-     *
-     * @return string
-     */
-    public function allComments()
+    private function countForThread(string $threadId, ?string $site, CommentVisibility $visibility): int
     {
-        return $this->renderDynamic(CollectionRenderer::class);
-    }
+        if ($this->params->bool('include_unpublished', false) && $visibility->canViewModerationForThread($threadId)) {
+            [$includeTombstones, $includeReplies] = $this->resolveTombstoneInclusion();
+            $hidden = Comments::hiddenSubtreeIds($threadId, $includeTombstones, $includeReplies);
 
-    /**
-     * {{ meerkat:thread }}
-     *
-     * @return string|string[]
-     *
-     * @throws BindingResolutionException
-     * @throws TemplateTagsException
-     */
-    public function thread()
-    {
-        return $this->responses();
-    }
+            $query = Comment::query()->where('thread_id', $threadId);
 
-    /**
-     * {{ meerkat:responses }}
-     *
-     * @return string|string[]
-     *
-     * @throws BindingResolutionException
-     * @throws TemplateTagsException
-     */
-    public function responses()
-    {
-        $contextId = $this->getHiddenContext();
+            if ($hidden !== []) {
+                $query->whereNotIn('comments.id', $hidden);
+            }
 
-        if ($contextId === null || mb_strlen(trim($contextId)) === 0) {
-            return '';
+            if ($site !== null) {
+                $query->where('comments.site', $site);
+            }
+
+            return $query->count();
         }
 
-        return $this->renderDynamic(
-            CollectionRenderer::class, function (CollectionRenderer $render) use ($contextId) {
-                $render->tagContext = 'meerkat:responses';
-                $render->setThreadId($contextId);
-
-                return $render;
-            });
+        return $visibility->publicCount($threadId, $site);
     }
 
-    /**
-     * Creates an anchor link for the current comment context.
-     *
-     * {{ meerkat:cp-link }}
-     *
-     * @return string
-     */
-    public function cpLink()
+    /** Matches {@see GetsComments::querySite} semantics. */
+    private function effectiveSiteParam(): ?string
     {
-        $commentId = $this->getCurrentContextId();
+        $raw = $this->params->get('site') ?? $this->params->get('locale');
+        $site = is_string($raw) || is_int($raw) ? (string) $raw : null;
 
-        return '<a id="comment-"'.$commentId.'"></a>';
+        if ($site === '*') {
+            return null;
+        }
+
+        if ($site !== null) {
+            return $site;
+        }
+
+        if (! SiteFacade::hasMultiple()) {
+            return null;
+        }
+
+        $current = SiteFacade::current();
+
+        return $current instanceof Site ? $current->handle() : null;
     }
 
-    /**
-     * Returns a Script element referencing Meerkat's reply JavaScript file.
-     *
-     * {{ meerkat:replies-to }}
-     *
-     * @return string
-     */
-    public function repliesTo()
+    public function commentsEnabled(): bool
     {
-        $scriptPath = PathProvider::publicJsVendorPath('replies-to.min');
+        $threadId = $this->getThreadId();
 
-        return '<script src="'.$scriptPath.'"></script>';
-    }
-
-    /**
-     * Returns a Script element referencing Meerkat's JavaScript file..
-     *
-     * {{ meerkat:js }}
-     *
-     * @return string
-     */
-    public function js()
-    {
-        $scriptPath = PathProvider::publicJsVendorPath('meerkat.min');
-
-        return '<script src="'.$scriptPath.'"></script>';
-    }
-
-    /**
-     * Returns the current Meerkat version.
-     *
-     * {{ meerkat:version }}
-     *
-     * @return string
-     */
-    public function version()
-    {
-        return MeerkatAddon::VERSION;
-    }
-
-    /**
-     * Provides simpler access to the underlying initials system.
-     *
-     * {{ meerkat:initials }}
-     *
-     * @return string
-     *
-     * @throws BindingResolutionException
-     * @throws TemplateTagsException
-     */
-    public function initials()
-    {
-        return $this->renderDynamic(InitialsTag::class);
-    }
-
-    /**
-     * Helper tag to evaluate if a URL parameter exists.
-     *
-     * {{ meerkat:has-input param="queryParamName" }}
-     *
-     * @return bool
-     */
-    public function hasInput()
-    {
-        $paramName = $this->params->get('param', null);
-
-        if ($paramName === null) {
+        if (! $threadId) {
             return false;
         }
 
-        $inputValue = request()->input($paramName, null);
-        $valuesToCheck = $this->params->get('in', null);
+        $entry = app(ThreadResolver::class)->resolveEntry($threadId) ?? EntryFacade::find($threadId);
 
-        if ($valuesToCheck !== null) {
-            $valuesArray = TypeConversions::parseToArray($valuesToCheck);
-
-            return in_array($inputValue, $valuesArray);
+        if (! $entry) {
+            return false;
         }
 
-        return true;
+        return app(CommentRepository::class)->areCommentsEnabledForEntry($entry);
     }
 
     /**
-     * Renders the tag content.
-     *
-     * @return string
+     * @return array{has_message: bool, message: ?string, submission_created: bool}
      */
-    public function render()
+    public function success(): array
     {
-        return '';
+        $message = session('meerkat.success');
+
+        return [
+            'has_message' => $message !== null,
+            'message' => is_string($message) ? $message : null,
+            'submission_created' => (bool) session('meerkat.submission_created', false),
+        ];
+    }
+
+    /**
+     * @return array{has_errors: bool, count: int, messages: list<string>}
+     */
+    public function errors(): array
+    {
+        $bag = session('errors');
+        $rawMessages = $bag instanceof ViewErrorBag && $bag->hasBag('meerkat')
+            ? $bag->getBag('meerkat')->all()
+            : [];
+        $messages = array_values(array_filter($rawMessages, is_string(...)));
+
+        return [
+            'has_errors' => $messages !== [],
+            'count' => count($messages),
+            'messages' => $messages,
+        ];
+    }
+
+    public function repliesTo(): string
+    {
+        return '<script src="'.e(FrontendAssets::repliesUrl()).'"></script>';
+    }
+
+    /** @return array<string, mixed> */
+    public function debug(): array
+    {
+        $shareField = config('meerkat.publishing.share_field');
+        $rawShareValue = $shareField ? ($this->context[$shareField] ?? null) : null;
+
+        if ($rawShareValue instanceof Value) {
+            $rawShareValue = $rawShareValue->value();
+        }
+
+        $isSharing = $this->resolveSharedContextValue() !== null;
+        $logical = $this->context['id'] ?? null;
+        if ($logical instanceof Value) {
+            $logical = $logical->value();
+        }
+
+        $effective = $this->getThreadId();
+
+        $rows = [
+            ['label' => 'Is sharing context', 'value' => $isSharing ? 'yes' : 'no'],
+            ['label' => 'Share field', 'value' => $shareField ?: '(disabled)'],
+            ['label' => 'Share field value', 'value' => $this->formatDebugValue($rawShareValue)],
+            ['label' => 'Logical context (page id)', 'value' => $this->formatDebugValue($logical)],
+            ['label' => 'Effective thread id', 'value' => $effective ?? ''],
+            ['label' => 'Max reply depth', 'value' => $this->formatDebugValue(config('meerkat.publishing.max_reply_depth') ?? 'unlimited')],
+        ];
+
+        return [
+            'is_sharing' => $isSharing,
+            'share_field' => $shareField,
+            'share_field_value' => $rawShareValue,
+            'logical_context_id' => $logical,
+            'effective_thread_id' => $effective,
+            'rows' => $rows,
+        ];
+    }
+
+    private function formatDebugValue(mixed $value): string
+    {
+        if ($value === null) {
+            return '(unset)';
+        }
+
+        if (is_array($value)) {
+            return '['.implode(', ', array_map($this->formatDebugValue(...), $value)).']';
+        }
+
+        return is_scalar($value) || $value instanceof \Stringable ? (string) $value : get_debug_type($value);
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function recentComments(): array
+    {
+        $limit = $this->positiveIntegerParam('limit', 5);
+
+        return array_values(collect(app(CommentVisibility::class)->recentPublicComments($limit, $this->effectiveSiteParam()))
+            ->map(function (Comment $comment) {
+                $row = PublicCommentData::guard($comment->toDataArray());
+                $row['thread'] = app(ThreadResolver::class)->resolveEntry($comment->thread_id)
+                    ?? EntryFacade::find($comment->thread_id);
+
+                return $row;
+            })
+            ->all());
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function topThreads(): array
+    {
+        $limit = $this->positiveIntegerParam('limit', 5);
+        $resolver = app(ThreadResolver::class);
+
+        return array_values(collect(app(CommentVisibility::class)->topPublicThreads($limit, $this->effectiveSiteParam()))
+            ->map(function (array $row) use ($resolver) {
+                $row['thread'] = $resolver->resolveEntry($row['thread_id'])
+                    ?? EntryFacade::find($row['thread_id']);
+
+                return $row;
+            })
+            ->all());
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function authorHistory(): array
+    {
+        $identifier = $this->params->get('identifier');
+
+        if (! $identifier) {
+            $identifier = UserFacade::current()?->email();
+        }
+
+        if (! $identifier) {
+            return [];
+        }
+
+        if (! is_string($identifier) && ! is_int($identifier)) {
+            return [];
+        }
+
+        $identifier = (string) $identifier;
+
+        $limit = $this->positiveIntegerParam('limit', 20);
+        $publishedOnly = $this->params->bool('published_only', true);
+
+        $visibility = app(CommentVisibility::class);
+
+        if ($publishedOnly || ! $visibility->canViewModeration()) {
+            return array_values(collect($visibility->publicAuthorHistory($identifier, $limit, $this->effectiveSiteParam()))
+                ->map(fn (Comment $comment) => PublicCommentData::guard($comment->toDataArray()))
+                ->all());
+        }
+
+        $query = Comments::query()->byAuthor($identifier)->newest();
+        $visibility->applyAccessibleScope($query);
+
+        $site = $this->params->get('site') ?? $this->params->get('locale');
+
+        if ((is_string($site) || is_int($site)) && $site !== '' && $site !== '*') {
+            $query->where('site', (string) $site);
+        }
+
+        $query->limit($limit);
+
+        $comments = [];
+
+        foreach ($query->get() as $comment) {
+            $comments[] = $comment->toDataArray();
+        }
+
+        return $comments;
+    }
+
+    /** @return array<string, mixed> */
+    public function threadStats(): array
+    {
+        $threadId = $this->getThreadId();
+
+        if (! $threadId) {
+            return [];
+        }
+
+        $visibility = app(CommentVisibility::class);
+
+        if ($this->params->bool('include_moderation', false) && $visibility->canViewModerationForThread($threadId)) {
+            return $this->stringKeyedArray(app(ThreadMetricsManager::class)
+                ->getThreadMetric($threadId)
+                ->toArray());
+        }
+
+        return $visibility->publicMetricArray($threadId, $this->effectiveSiteParam());
+    }
+
+    private function positiveIntegerParam(string $key, int $default): int
+    {
+        $value = $this->params->get($key, $default);
+
+        if (is_int($value)) {
+            return max(1, $value);
+        }
+
+        return is_string($value) && is_numeric($value) ? max(1, (int) $value) : $default;
+    }
+
+    /** @return array<string, mixed> */
+    private function stringKeyedArray(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        return array_filter($value, is_string(...), ARRAY_FILTER_USE_KEY);
     }
 }

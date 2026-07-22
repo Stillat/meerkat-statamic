@@ -1,5 +1,0 @@
-node_modules/*
-.idea/*
-dist/*
-dist/meerkat.js.map
-dist/meerkat.js

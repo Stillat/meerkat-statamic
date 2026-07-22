@@ -1,0 +1,115 @@
+<?php
+
+namespace Statamic\Entries;
+
+class Entry
+{
+    /** @return string */
+    public function id() {}
+
+    /** @return Collection */
+    public function collection() {}
+
+    /** @return \Statamic\Sites\Site */
+    public function site() {}
+
+    /** @return mixed */
+    public function get(string $key) {}
+}
+
+namespace Statamic\Contracts\Entries;
+
+interface Entry
+{
+    /** @return string */
+    public function id();
+
+    /** @return \Statamic\Entries\Collection */
+    public function collection();
+
+    /** @return \Statamic\Sites\Site */
+    public function site();
+
+    /** @return mixed */
+    public function get(string $key);
+}
+
+namespace Statamic\Contracts\Auth;
+
+interface User
+{
+    /** @return string */
+    public function id();
+
+    /** @return string|null */
+    public function name();
+
+    /** @return string|null */
+    public function email();
+
+    /** @return string|null */
+    public function avatar();
+
+    /** @return string */
+    public function initials();
+
+    /** @return bool */
+    public function can(mixed $ability, mixed $arguments = []);
+}
+
+namespace Statamic\Entries;
+
+class Collection
+{
+    /** @return string */
+    public function handle() {}
+}
+
+namespace Statamic\Sites;
+
+class Site
+{
+    /** @return string */
+    public function handle() {}
+}
+
+namespace Statamic\Auth;
+
+class User
+{
+    /** @return ($id is null ? string : $this) */
+    public function id(?string $id = null) {}
+
+    /** @return string|null */
+    public function name() {}
+
+    /** @return ($email is null ? string|null : $this) */
+    public function email(?string $email = null) {}
+
+    /** @return string|null */
+    public function avatar() {}
+
+    /** @return string */
+    public function initials() {}
+
+    /** @return bool */
+    public function can(mixed $ability, mixed $arguments = []) {}
+
+    /**
+     * @param array<string, mixed> $data
+     * @return $this
+     */
+    public function data(array $data) {}
+
+    /** @return $this */
+    public function makeSuper() {}
+
+    /** @return $this */
+    public function assignRole(mixed $role) {}
+
+    /** @return bool */
+    public function save() {}
+
+    /** @return bool */
+    public function saveQuietly() {}
+}

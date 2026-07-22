@@ -1,0 +1,56 @@
+<?php
+
+namespace Statamic\Fields;
+
+class Tab {}
+
+class Field {}
+
+class Blueprint
+{
+    /** @return string|null */
+    public function handle() {}
+
+    /** @return \Illuminate\Support\Collection<int, Tab> */
+    public function tabs() {}
+
+    /** @return Fields */
+    public function fields() {}
+
+    /** @return \Statamic\CP\Columns */
+    public function columns() {}
+}
+
+class Fields
+{
+    /**
+     * @param array<string, mixed> $values
+     * @return $this
+     */
+    public function addValues(array $values) {}
+
+    /** @return $this */
+    public function process() {}
+
+    /** @return $this */
+    public function preProcess() {}
+
+    /** @return Values */
+    public function values() {}
+
+    /** @return Values */
+    public function meta() {}
+
+    /** @return \Illuminate\Support\Collection<int|string, Field> */
+    public function all() {}
+}
+
+class Values
+{
+    /** @return array<string, mixed> */
+    public function all() {}
+}
+
+namespace Statamic\CP;
+
+class Columns {}

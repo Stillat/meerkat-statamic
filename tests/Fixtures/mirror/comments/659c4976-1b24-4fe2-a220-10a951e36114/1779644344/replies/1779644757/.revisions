@@ -1,0 +1,20 @@
+revision: 1779644768
+changes:
+  -
+    timestamp: 1779644758
+    oko: '["id","authenticated_user","name","email","user_ip","user_agent","referer","internal_author_has_name","internal_author_has_email","*content*"]'
+    new: '{"*content*":"i am reply","authenticated_user":"c3edb6f0-3c65-49f8-8688-3a5b96e5f8b4","email":"john@stillat.com","id":"1779644757","internal_author_has_email":true,"internal_author_has_name":true,"name":"John","referer":"http:\/\/meerkatmigrator.test\/cp\/meerkat\/pending","spam":false,"user_agent":"Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/148.0.0.0 Safari\/537.36","user_ip":"127.0.0.1"}'
+    old: '{"*content*":"i am reply","authenticated_user":"c3edb6f0-3c65-49f8-8688-3a5b96e5f8b4","email":"john@stillat.com","id":"1779644757","internal_author_has_email":true,"internal_author_has_name":true,"name":"John","referer":"http:\/\/meerkatmigrator.test\/cp\/meerkat\/pending","user_agent":"Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/148.0.0.0 Safari\/537.36","user_ip":"127.0.0.1"}'
+    user: c3edb6f0-3c65-49f8-8688-3a5b96e5f8b4
+  -
+    timestamp: 1779644758
+    oko: '["id","authenticated_user","name","email","user_ip","user_agent","referer","internal_author_has_name","internal_author_has_email","spam","*content*"]'
+    new: '{"*content*":"i am reply","authenticated_user":"c3edb6f0-3c65-49f8-8688-3a5b96e5f8b4","email":"john@stillat.com","id":"1779644757","internal_author_has_email":true,"internal_author_has_name":true,"name":"John","referer":"http:\/\/meerkatmigrator.test\/cp\/meerkat\/pending","spam":false,"user_agent":"Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/148.0.0.0 Safari\/537.36","user_ip":"127.0.0.1"}'
+    old: '{"*content*":"i am reply","authenticated_user":"c3edb6f0-3c65-49f8-8688-3a5b96e5f8b4","email":"john@stillat.com","id":"1779644757","internal_author_has_email":true,"internal_author_has_name":true,"name":"John","referer":"http:\/\/meerkatmigrator.test\/cp\/meerkat\/pending","spam":false,"user_agent":"Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/148.0.0.0 Safari\/537.36","user_ip":"127.0.0.1"}'
+    user: c3edb6f0-3c65-49f8-8688-3a5b96e5f8b4
+  -
+    timestamp: 1779644768
+    oko: '["id","authenticated_user","name","email","user_ip","user_agent","referer","internal_author_has_name","internal_author_has_email","spam","*content*"]'
+    new: '{"*content*":"i am reply","authenticated_user":"c3edb6f0-3c65-49f8-8688-3a5b96e5f8b4","email":"john@stillat.com","id":"1779644757","internal_author_has_email":true,"internal_author_has_name":true,"name":"John","published":true,"referer":"http:\/\/meerkatmigrator.test\/cp\/meerkat\/pending","spam":false,"user_agent":"Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/148.0.0.0 Safari\/537.36","user_ip":"127.0.0.1"}'
+    old: '{"*content*":"i am reply","authenticated_user":"c3edb6f0-3c65-49f8-8688-3a5b96e5f8b4","email":"john@stillat.com","id":"1779644757","internal_author_has_email":true,"internal_author_has_name":true,"name":"John","referer":"http:\/\/meerkatmigrator.test\/cp\/meerkat\/pending","spam":false,"user_agent":"Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/148.0.0.0 Safari\/537.36","user_ip":"127.0.0.1"}'
+    user: c3edb6f0-3c65-49f8-8688-3a5b96e5f8b4
