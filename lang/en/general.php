@@ -16,6 +16,7 @@ return [
     'form_title' => 'Meerkat Comments',
 
     'export_comments' => 'Export Comments',
+    'edit_blueprint' => 'Edit Comment Blueprint',
 
     'nav_comments' => 'Comments',
 

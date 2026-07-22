@@ -9,7 +9,13 @@
                         icon="clipboard-check"
                         @click="confirmCheckOutstandingForSpam = true"
                     />
-                    <DropdownSeparator v-if="permissions.can_check_comment_spam" />
+                    <DropdownItem
+                        v-if="permissions.can_configure_fields"
+                        :text="__('meerkat::general.edit_blueprint')"
+                        icon="blueprints"
+                        :href="blueprintUrl"
+                    />
+                    <DropdownSeparator v-if="permissions.can_check_comment_spam || permissions.can_configure_fields" />
                     <DropdownItem
                         :text="__('meerkat::general.export_comments')"
                         icon="download"
@@ -287,6 +293,7 @@ export default {
             editEditorSaving: false,
             pendingDiscard: null,
             preferencesPrefix: 'meerkat.comments',
+            blueprintUrl: cp_url('meerkat/blueprint'),
             requestUrl: cp_url('meerkat/comments/filter'),
             view: this.$preferences.get('meerkat.comments.view', 'table'),
         };
