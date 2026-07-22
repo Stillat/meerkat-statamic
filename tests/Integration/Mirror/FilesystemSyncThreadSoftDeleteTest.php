@@ -55,6 +55,26 @@ class FilesystemSyncThreadSoftDeleteTest extends TestCase
     }
 
     #[Test]
+    public function legacy_soft_deleted_threads_stay_trashed_on_resync(): void
+    {
+        $threadId = 'legacy-stays-trashed';
+        $this->writeComment('_'.$threadId, '1700000042');
+
+        $this->sync();
+        $firstPass = $this->requireValue(Thread::query()->withTrashed()->where('thread_id', $threadId)->first());
+        $this->assertNotNull($firstPass->deleted_at);
+
+        $this->sync();
+
+        $secondPass = $this->requireValue(Thread::query()->withTrashed()->where('thread_id', $threadId)->first());
+        $this->assertNotNull(
+            $secondPass->deleted_at,
+            'A second sync must not restore a thread soft-deleted via the legacy prefix.'
+        );
+        $this->assertFileExists($this->mirrorRoot.'/'.$threadId.'/.meta');
+    }
+
+    #[Test]
     public function meta_trashed_state_soft_deletes_and_restores_a_thread_on_resync(): void
     {
         $threadId = 'meta-thread';

@@ -78,6 +78,50 @@ class CommentSerializerTest extends TestCase
     }
 
     #[Test]
+    public function array_extras_in_comment_data_round_trip_through_serialize_and_parse(): void
+    {
+        $comment = $this->createComment([
+            'timestamp_id' => '1779039556',
+            'comment_text' => 'hello',
+            'comment_data' => [
+                'choices' => ['alpha', 'beta'],
+                'ratings' => ['clarity' => 5, 'tone' => 3],
+                'nested' => [['label' => 'first'], ['label' => 'second']],
+            ],
+        ]);
+
+        $output = CommentSerializer::toString($comment);
+        $parsed = CommentParser::parse($output);
+
+        $this->assertSame(['alpha', 'beta'], $parsed['frontmatter']['choices']);
+        $this->assertSame(['clarity' => 5, 'tone' => 3], $parsed['frontmatter']['ratings']);
+        $this->assertSame([['label' => 'first'], ['label' => 'second']], $parsed['frontmatter']['nested']);
+        $this->assertSame('hello', $parsed['body']);
+    }
+
+    #[Test]
+    public function multi_line_string_values_round_trip_without_losing_newlines(): void
+    {
+        $comment = $this->createComment([
+            'timestamp_id' => '1779039557',
+            'comment_text' => 'hello',
+            'moderation_notes' => "first line\nsecond line",
+            'comment_data' => [
+                'address' => "12 Main St\nSpringfield",
+                'sneaky' => "before\n--- after",
+            ],
+        ]);
+
+        $output = CommentSerializer::toString($comment);
+        $parsed = CommentParser::parse($output);
+
+        $this->assertSame("first line\nsecond line", $parsed['frontmatter']['moderation_notes']);
+        $this->assertSame("12 Main St\nSpringfield", $parsed['frontmatter']['address']);
+        $this->assertSame("before\n--- after", $parsed['frontmatter']['sneaky']);
+        $this->assertSame('hello', $parsed['body']);
+    }
+
+    #[Test]
     public function extras_in_comment_data_round_trip_through_serialize_and_parse(): void
     {
         $comment = $this->createComment([

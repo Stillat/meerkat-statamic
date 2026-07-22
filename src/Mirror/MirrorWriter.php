@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Stillat\Meerkat\Mirror;
 
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\File;
 use Stillat\Meerkat\Database\Models\Comment;
 use Stillat\Meerkat\Database\Models\CommentRevision;
@@ -40,12 +41,30 @@ class MirrorWriter
             return;
         }
 
+        $this->backfillAncestors($comment);
         $this->ensureTimestampId($comment);
 
         $file = $this->paths->fileFor($comment);
 
         $this->ensureDirectory(dirname($file));
         $this->putFile($file, CommentSerializer::toString($comment));
+    }
+
+    private function backfillAncestors(Comment $comment): void
+    {
+        if ($comment->parent_id === null) {
+            return;
+        }
+
+        $parent = Comment::query()->withTrashed()->where('comments.id', $comment->parent_id)->first();
+
+        if ($parent === null) {
+            return;
+        }
+
+        if ($parent->timestamp_id === null || $parent->timestamp_id === '') {
+            $this->write($parent);
+        }
     }
 
     public function remove(Comment $comment): void
@@ -71,6 +90,12 @@ class MirrorWriter
             File::delete($revisionsFile);
         }
 
+        $repliesDirectory = $directory.'/replies';
+
+        if (File::isDirectory($repliesDirectory) && $this->isEmptyDirectory($repliesDirectory)) {
+            File::deleteDirectory($repliesDirectory);
+        }
+
         if (File::isDirectory($directory) && $this->isEmptyDirectory($directory)) {
             File::deleteDirectory($directory);
         }
@@ -83,20 +108,36 @@ class MirrorWriter
         }
 
         $base = $comment->created_at?->getTimestamp() ?? time();
-        $candidate = (string) $base;
 
-        while ($this->isTaken($comment->thread_id, $candidate, $comment->id)) {
-            $base++;
+        for ($attempt = 0; ; $attempt++) {
             $candidate = (string) $base;
-        }
 
-        $comment->timestamp_id = $candidate;
-        Comment::query()
-            ->where('comments.id', $comment->id)
-            ->update(['timestamp_id' => $candidate]);
+            while ($this->isTaken($comment->thread_id, $candidate, $comment->id)) {
+                $base++;
+                $candidate = (string) $base;
+            }
+
+            try {
+                Comment::query()
+                    ->where('comments.id', $comment->id)
+                    ->update(['timestamp_id' => $candidate]);
+            } catch (UniqueConstraintViolationException $e) {
+                if ($attempt >= 4) {
+                    throw $e;
+                }
+
+                $base++;
+
+                continue;
+            }
+
+            $comment->timestamp_id = $candidate;
+
+            return;
+        }
     }
 
-    private function isTaken(string $threadId, string $candidate, int $selfId): bool
+    protected function isTaken(string $threadId, string $candidate, int $selfId): bool
     {
         return Comment::query()
             ->where('comments.thread_id', $threadId)

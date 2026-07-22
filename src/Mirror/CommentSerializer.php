@@ -58,11 +58,17 @@ class CommentSerializer
                 return '{  }';
             }
 
-            return rtrim(Yaml::dump($value, 100, 2, Yaml::DUMP_NULL_AS_TILDE));
+            return rtrim(Yaml::dump($value, 0, 2, Yaml::DUMP_NULL_AS_TILDE));
         }
 
         if (is_string($value) || $value instanceof \Stringable) {
-            return "'".str_replace("'", "''", (string) $value)."'";
+            $string = (string) $value;
+
+            if (str_contains($string, "\n") || str_contains($string, "\r")) {
+                return rtrim(Yaml::dump($string, 0, 2, Yaml::DUMP_NULL_AS_TILDE));
+            }
+
+            return "'".str_replace("'", "''", $string)."'";
         }
 
         $encoded = json_encode($value);

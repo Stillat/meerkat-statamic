@@ -161,6 +161,7 @@ class FilesystemSync
                 $this->stats['legacy_dirs_would_rename']++;
             } elseif (rename($threadDir, $cleanDir)) {
                 $threadDir = $cleanDir;
+                $this->persistLegacyTrashedMeta($cleanDir);
             } else {
                 $this->errors[] = [
                     'file' => $threadDir,
@@ -275,6 +276,14 @@ class FilesystemSync
         }
 
         return (int) $existing->parent_id === $parentId;
+    }
+
+    private function persistLegacyTrashedMeta(string $threadDir): void
+    {
+        $meta = $this->readThreadMeta($threadDir) ?? [];
+        $meta['trashed'] = true;
+
+        File::put($threadDir.'/'.self::THREAD_META_FILE, Yaml::dump($meta, 2, 2));
     }
 
     /**
