@@ -42,6 +42,11 @@ class PermissionGatesTest extends TestCase
                 ['edit comments'],
                 ['view comments'],
             ],
+            'blueprint editor' => [
+                fn () => $this->getJson(cp_route('meerkat.blueprint.edit')),
+                ['view comments'],
+                ['configure fields'],
+            ],
             'comment index' => [
                 fn () => $this->getJson(cp_route('meerkat.cp.comments.index')),
                 ['edit comments'],

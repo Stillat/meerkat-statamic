@@ -3,12 +3,15 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
+use Stillat\Meerkat\Http\Controllers\CP\BlueprintController;
 use Stillat\Meerkat\Http\Controllers\CP\CommentActionController;
 use Stillat\Meerkat\Http\Controllers\CP\CommentController;
 use Stillat\Meerkat\Http\Controllers\CP\DashboardController;
 
 Route::prefix('meerkat')->group(function () {
     Route::get('/', [DashboardController::class, 'show'])->name('meerkat.cp.dashboard');
+    Route::get('blueprint', [BlueprintController::class, 'edit'])->name('meerkat.blueprint.edit');
+    Route::patch('blueprint', [BlueprintController::class, 'update'])->name('meerkat.blueprint.update');
 
     Route::prefix('comments')->group(function () {
         Route::get('filter', [CommentController::class, 'filter'])->name('meerkat.cp.comments.index');

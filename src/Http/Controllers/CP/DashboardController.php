@@ -41,7 +41,10 @@ class DashboardController extends CpController
             'meta' => (object) $fields->meta()->all(),
             'permissions' => array_merge(
                 $this->getPermissions()->toArray(),
-                ['revisions_enabled' => Features::revisions()],
+                [
+                    'can_configure_fields' => $user->can('configure fields'),
+                    'revisions_enabled' => Features::revisions(),
+                ],
             ),
             'sortColumn' => 'created_at',
             'sortDirection' => 'desc',
