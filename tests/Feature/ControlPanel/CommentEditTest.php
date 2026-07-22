@@ -78,6 +78,22 @@ class CommentEditTest extends TestCase
         $this->assertFalse($fresh->is_published);
     }
 
+    #[Test]
+    public function approving_a_spam_flagged_comment_clears_the_spam_flag(): void
+    {
+        $this->actAsAdmin();
+        $comment = CommentFactory::new()->threadId('cp-status')->published(false)->spam()->create();
+
+        $this->putJson(cp_route('meerkat.comment.update', ['id' => $comment->id]), $this->payload($comment, [
+            'moderation_status' => 'approved',
+        ]))->assertSuccessful();
+
+        $fresh = $this->requireValue($comment->fresh());
+        $this->assertTrue($fresh->is_published);
+        $this->assertFalse($fresh->is_spam, 'Approved must be publicly visible; a lingering spam flag keeps it hidden.');
+        $this->assertSame('approved', $fresh->moderation_status);
+    }
+
     private function actAsAdmin(): void
     {
         $this->createStatamicCollection('blog', 'Blog');

@@ -463,6 +463,7 @@ class CommentController extends CpController
 
         if ($comment->moderation_status === 'approved') {
             $comment->is_published = true;
+            $comment->is_spam = false;
         } elseif (in_array($comment->moderation_status, ['pending', 'rejected', 'spam'])) {
             $comment->is_published = false;
         }

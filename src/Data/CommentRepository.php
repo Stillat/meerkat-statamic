@@ -24,6 +24,7 @@ use Stillat\Meerkat\Concerns\GetsMeerkatConfig;
 use Stillat\Meerkat\Configuration\Settings;
 use Stillat\Meerkat\Contracts\CommentRepository as CommentRepositoryContract;
 use Stillat\Meerkat\Database\Models\Comment;
+use Stillat\Meerkat\Database\Models\CommentModerationAudit;
 use Stillat\Meerkat\Database\Models\CommentRevision;
 use Stillat\Meerkat\Database\Models\Scopes\AuthorDetailsScope;
 use Stillat\Meerkat\Database\Models\Thread;
@@ -52,7 +53,7 @@ class CommentRepository implements CommentRepositoryContract
     {
         $threadId = app(ThreadResolver::class)->forEntry($entry);
 
-        Thread::updateOrCreate(
+        $thread = Thread::withTrashed()->updateOrCreate(
             ['thread_id' => $threadId],
             [
                 'thread_id' => $threadId,
@@ -62,6 +63,10 @@ class CommentRepository implements CommentRepositoryContract
                 'collection' => $this->entryHandle($entry->collection()),
             ],
         );
+
+        if ($thread->trashed()) {
+            $thread->restore();
+        }
     }
 
     public function deleteComment(int $id, ?string $reason = null): bool
@@ -293,6 +298,12 @@ class CommentRepository implements CommentRepositoryContract
     public function markAsSpam(int $id): bool
     {
         $saved = $this->withLockedComment($id, function (Comment $comment): bool {
+            $wasPublished = (bool) $comment->getOriginal('is_published');
+
+            if (! $wasPublished && (bool) $comment->getOriginal('is_spam')) {
+                $wasPublished = $this->wasPublishedWhenFlaggedSpam($comment);
+            }
+
             $comment->is_spam = true;
             $comment->is_ham = false;
             $comment->checked_for_spam = true;
@@ -304,6 +315,7 @@ class CommentRepository implements CommentRepositoryContract
 
             return $this->saveAndRecord($comment, 'marked_spam', [
                 'thread_id' => $comment->thread_id,
+                'was_published' => $wasPublished,
             ]);
         });
 
@@ -323,7 +335,7 @@ class CommentRepository implements CommentRepositoryContract
             $comment->is_spam = false;
             $comment->checked_for_spam = true;
 
-            if ($wasOriginallySpam && ! $comment->is_published && $this->autoUnpublishSpamComments()) {
+            if ($wasOriginallySpam && ! $comment->is_published && $this->wasPublishedWhenFlaggedSpam($comment)) {
                 $comment->is_published = true;
             }
 
@@ -507,9 +519,18 @@ class CommentRepository implements CommentRepositoryContract
             $checked = is_bool($hookChecked) ? $hookChecked : true;
 
             $this->withLockedComment($id, function (Comment $comment) use ($isSpam, $checked): bool {
+                $wasPublished = (bool) $comment->getOriginal('is_published');
+
                 $comment->is_spam = $isSpam;
                 $comment->checked_for_spam = $checked;
-                $comment->moderation_status = $isSpam ? 'spam' : ($comment->is_published ? 'approved' : 'pending');
+
+                if ($isSpam) {
+                    $comment->moderation_status = 'spam';
+                } elseif ($comment->is_published) {
+                    $comment->moderation_status = 'approved';
+                } elseif ($comment->moderation_status !== 'rejected') {
+                    $comment->moderation_status = 'pending';
+                }
 
                 if ($isSpam && $this->resolveSpamAction($comment) === 'delete') {
                     $this->saveWithoutCommentSavedEvent($comment);
@@ -520,7 +541,7 @@ class CommentRepository implements CommentRepositoryContract
                 }
 
                 $this->saveWithoutCommentSavedEvent($comment);
-                $this->audit()->log($comment, 'spam_checked', ['is_spam' => $isSpam]);
+                $this->audit()->log($comment, 'spam_checked', ['is_spam' => $isSpam, 'was_published' => $wasPublished]);
 
                 return true;
             });
@@ -541,15 +562,56 @@ class CommentRepository implements CommentRepositoryContract
                     }
 
                     $comment->is_published = false;
-                    $comment->moderation_status = 'pending';
+                    $comment->moderation_reason = 'guard_failure';
+                    $comment->stampModeration('pending');
 
-                    return $this->saveWithoutCommentSavedEvent($comment);
+                    if (! $this->saveWithoutCommentSavedEvent($comment)) {
+                        return false;
+                    }
+
+                    $this->audit()->log($comment, 'unpublished', [
+                        'thread_id' => $comment->thread_id,
+                        'reason' => 'guard_failure',
+                    ]);
+
+                    return true;
                 });
 
                 $this->invalidateThreadCache($threadId);
                 $this->metrics()->recalculateThread($threadId);
             }
         }
+    }
+
+    private function wasPublishedWhenFlaggedSpam(Comment $comment): bool
+    {
+        $audits = CommentModerationAudit::query()
+            ->where('comment_id', $comment->id)
+            ->whereIn('action', ['marked_spam', 'spam_checked'])
+            ->orderByDesc('id')
+            ->get();
+
+        foreach ($audits as $audit) {
+            $details = is_array($audit->details) ? $audit->details : [];
+
+            if ($audit->action === 'spam_checked' && ($details['is_spam'] ?? false) !== true) {
+                continue;
+            }
+
+            if (array_key_exists('was_published', $details)) {
+                return $details['was_published'] === true;
+            }
+
+            $publishedDiff = $details['is_published'] ?? null;
+
+            if (is_array($publishedDiff) && array_key_exists('from', $publishedDiff)) {
+                return (bool) $publishedDiff['from'];
+            }
+
+            return false;
+        }
+
+        return false;
     }
 
     private function resolveSpamAction(Comment $comment): string

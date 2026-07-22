@@ -7,6 +7,7 @@ namespace Stillat\Meerkat\Tests\Integration\Comments;
 use Illuminate\Support\Facades\Queue;
 use PHPUnit\Framework\Attributes\Test;
 use Stillat\Meerkat\Contracts\CommentRepository as CommentRepositoryContract;
+use Stillat\Meerkat\Database\Models\Thread;
 use Stillat\Meerkat\Jobs\CheckForSpam;
 use Stillat\Meerkat\Testing\Factories\CommentFactory;
 use Stillat\Meerkat\Tests\TestCase;
@@ -30,6 +31,21 @@ class RepositoryTest extends TestCase
         $this->repository->ensureThreadExists($entry);
 
         $this->assertDatabaseHas('threads', ['thread_id' => 'new-entry-id'], 'meerkat');
+    }
+
+    #[Test]
+    public function ensure_thread_exists_revives_a_soft_deleted_thread_row(): void
+    {
+        $entry = $this->createEntry(['id' => 'revive-entry-id', 'title' => 'Revive']);
+        $this->repository->ensureThreadExists($entry);
+        $this->requireValue(Thread::query()->where('thread_id', 'revive-entry-id')->first())->delete();
+
+        $this->repository->ensureThreadExists($entry);
+
+        $this->assertNull(
+            Thread::query()->where('thread_id', 'revive-entry-id')->first()?->deleted_at,
+            'A trashed thread row must be revived, not collide with the unique thread_id index.'
+        );
     }
 
     #[Test]

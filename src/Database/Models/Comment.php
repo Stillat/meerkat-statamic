@@ -498,17 +498,11 @@ class Comment extends Model implements Augmentable, BulkAugmentable, ResolvesVal
         $wasCreated = ! $this->exists;
 
         if (! $this->skipHooks) {
-            $payload = $this->runModelHooksWithAliases('saving', 'before-saving-comment-model', [
+            $this->runModelHooksWithAliases('saving', 'before-saving-comment-model', [
                 'attributes' => $this->getAttributes(),
                 'model' => $this,
                 'is_creating' => $wasCreated,
             ]);
-
-            if (property_exists($payload, 'attributes') && $payload->attributes !== null && is_array($payload->attributes)) {
-                foreach ($payload->attributes as $key => $value) {
-                    $this->{$key} = $value;
-                }
-            }
         }
 
         unset(

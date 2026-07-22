@@ -56,6 +56,70 @@ class ModerationActionsTest extends TestCase
     }
 
     #[Test]
+    public function marking_ham_returns_a_never_approved_comment_to_the_moderation_queue(): void
+    {
+        Settings::set('spam.auto_unpublish_spam', true);
+        $comment = CommentFactory::new()->published(false)->create();
+
+        $this->assertTrue(Comments::markAsSpam($comment->id));
+        $this->assertTrue(Comments::markAsHam($comment->id));
+
+        $fresh = $this->requireValue($comment->fresh());
+        $this->assertFalse($fresh->is_published, 'Ham must not bypass the moderation queue for a comment that was never approved.');
+        $this->assertSame('pending', $fresh->moderation_status);
+    }
+
+    #[Test]
+    public function ham_republishes_when_a_cp_diff_audit_recorded_the_published_state(): void
+    {
+        $comment = CommentFactory::new()->published(false)->spam()->create();
+
+        CommentModerationAudit::query()->create([
+            'comment_id' => $comment->id,
+            'actor_id' => null,
+            'action' => 'marked_spam',
+            'details' => [
+                'moderation_status' => ['from' => 'approved', 'to' => 'spam'],
+                'is_published' => ['from' => true, 'to' => false],
+                'is_spam' => ['from' => false, 'to' => true],
+            ],
+        ]);
+
+        $this->assertTrue(Comments::markAsHam($comment->id));
+        $this->assertTrue($this->requireValue($comment->fresh())->is_published);
+    }
+
+    #[Test]
+    public function repeated_spam_flags_preserve_the_original_published_evidence(): void
+    {
+        $comment = CommentFactory::new()->published()->create();
+
+        $this->assertTrue(Comments::markAsSpam($comment->id));
+        $this->assertTrue(Comments::markAsSpam($comment->id));
+        $this->assertTrue(Comments::markAsHam($comment->id));
+
+        $this->assertTrue(
+            $this->requireValue($comment->fresh())->is_published,
+            'A re-flag (e.g. via a bulk selection) must not shadow the original was-published evidence.'
+        );
+    }
+
+    #[Test]
+    public function a_clean_spam_recheck_preserves_a_moderator_rejection(): void
+    {
+        $this->createEntry(['id' => 'recheck-entry']);
+        $comment = CommentFactory::new()->threadId('recheck-entry')->published()->create();
+
+        $this->assertTrue(Comments::reject($comment->id, 'off-topic'));
+        Comments::checkForSpam($comment->id);
+
+        $fresh = $this->requireValue($comment->fresh());
+        $this->assertSame('rejected', $fresh->moderation_status);
+        $this->assertSame('off-topic', $fresh->moderation_reason);
+        $this->assertFalse($fresh->is_published);
+    }
+
+    #[Test]
     public function bulk_moderation_counts_only_existing_comments_and_applies_each_transition(): void
     {
         $comments = collect([
