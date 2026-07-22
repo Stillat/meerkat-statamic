@@ -9,6 +9,7 @@ use PHPUnit\Framework\Attributes\Test;
 use Statamic\Facades\Collection;
 use Statamic\Facades\User;
 use Statamic\Hooks\Payload;
+use Stillat\Meerkat\Blueprints\CommentBlueprint;
 use Stillat\Meerkat\Database\Models\Comment;
 use Stillat\Meerkat\Database\Models\CommentModerationAudit;
 use Stillat\Meerkat\Database\Models\CommentRevision;
@@ -90,6 +91,34 @@ class CommentsHttpTest extends TestCase
     }
 
     #[Test]
+    public function index_applies_statamics_encoded_field_filters(): void
+    {
+        $this->actAsAdmin();
+        $this->makePublishedFieldFilterable();
+
+        $published = $this->comment('cp-filter-published', 'Published', 'published filter marker');
+        CommentFactory::new()
+            ->threadId('cp-filter-unpublished')
+            ->collection('blog')
+            ->author('Unpublished', 'unpublished@example.com')
+            ->text('unpublished filter marker')
+            ->data(['comment' => 'unpublished filter marker'])
+            ->unpublished()
+            ->create();
+
+        $response = $this->getJson(cp_route('meerkat.cp.comments.index').'?'.http_build_query([
+            'filters' => $this->encodedFilters([
+                'fields' => ['is_published' => ['value' => 'true']],
+            ]),
+        ]))->assertOk();
+
+        $rows = $this->requireRows($response->json('data'));
+
+        $this->assertSame([$published->id], array_column($rows, 'id'));
+        $this->assertIsString($response->json('meta.activeFilterBadges.fields.is_published'));
+    }
+
+    #[Test]
     public function thread_endpoint_returns_the_complete_moderation_tree(): void
     {
         $this->actAsAdmin();
@@ -134,6 +163,34 @@ class CommentsHttpTest extends TestCase
         $json->assertOk()->assertDownload();
         $this->assertStringStartsWith('application/json', (string) $json->headers->get('Content-Type'));
         $this->assertStringContainsString('.json', (string) $json->headers->get('content-disposition'));
+    }
+
+    #[Test]
+    public function exports_apply_statamics_encoded_field_filters(): void
+    {
+        $this->actAsAdmin();
+        $this->makePublishedFieldFilterable();
+
+        $this->comment('cp-filtered-export-published', 'Published', 'included export marker');
+        CommentFactory::new()
+            ->threadId('cp-filtered-export-unpublished')
+            ->collection('blog')
+            ->author('Unpublished', 'unpublished@example.com')
+            ->text('excluded export marker')
+            ->data(['comment' => 'excluded export marker'])
+            ->unpublished()
+            ->create();
+
+        $response = $this->get(cp_route('meerkat.comments.export').'?'.http_build_query([
+            'filters' => $this->encodedFilters([
+                'fields' => ['is_published' => ['value' => 'true']],
+            ]),
+        ]))->assertOk()->assertDownload();
+
+        $contents = $response->streamedContent() ?: (string) $response->getContent();
+
+        $this->assertStringContainsString('included export marker', $contents);
+        $this->assertStringNotContainsString('excluded export marker', $contents);
     }
 
     #[Test]
@@ -291,5 +348,17 @@ class CommentsHttpTest extends TestCase
             ->data(['comment' => $text])
             ->published()
             ->create();
+    }
+
+    private function makePublishedFieldFilterable(): void
+    {
+        CommentBlueprint::getBlueprint('meerkat')
+            ->ensureFieldHasConfig('is_published', ['filterable' => true]);
+    }
+
+    /** @param array<string, mixed> $filters */
+    private function encodedFilters(array $filters): string
+    {
+        return base64_encode(json_encode($filters, JSON_THROW_ON_ERROR));
     }
 }

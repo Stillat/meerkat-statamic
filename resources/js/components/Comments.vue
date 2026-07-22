@@ -58,6 +58,7 @@
             :sort-direction="sortDirection"
             :preferences-prefix="preferencesPrefix"
             push-query
+            @request-completed="handleListingRequestCompleted"
         >
             <template #cell-comment_text="{ row: comment }">
                 <button
@@ -113,6 +114,7 @@
             :preferences-prefix="preferencesPrefix"
             :permissions="permissions"
             @edit="openEdit"
+            @request-completed="handleListingRequestCompleted"
             @view-revisions="openRevisions"
             @view-thread="openThread"
         />
@@ -292,6 +294,7 @@ export default {
             replyEditorSaving: false,
             editEditorSaving: false,
             pendingDiscard: null,
+            listingParameters: {},
             preferencesPrefix: 'meerkat.comments',
             blueprintUrl: cp_url('meerkat/blueprint'),
             requestUrl: cp_url('meerkat/comments/filter'),
@@ -319,7 +322,21 @@ export default {
 
     methods: {
         exportUrl(format) {
-            return cp_url(`meerkat/comments/export?format=${format}`);
+            const parameters = new URLSearchParams();
+
+            Object.entries(this.listingParameters).forEach(([key, value]) => {
+                if (value !== null && value !== undefined && value !== '') {
+                    parameters.set(key, String(value));
+                }
+            });
+
+            parameters.set('format', format);
+
+            return `${cp_url('meerkat/comments/export')}?${parameters.toString()}`;
+        },
+
+        handleListingRequestCompleted(payload) {
+            this.listingParameters = payload?.parameters || {};
         },
 
         truncate(text, length = 100) {

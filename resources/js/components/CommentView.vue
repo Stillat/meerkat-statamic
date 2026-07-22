@@ -39,7 +39,7 @@ const props = defineProps({
     permissions: { type: Object, default: () => ({}) },
 });
 
-const emit = defineEmits(['edit', 'view-revisions', 'view-thread']);
+const emit = defineEmits(['edit', 'request-completed', 'view-revisions', 'view-thread']);
 
 const REPLY_DIRTY_KEY = 'meerkat-inline-reply';
 
@@ -237,6 +237,7 @@ defineExpose({
         :allow-bulk-actions="false"
         :allow-customizing-columns="false"
         push-query
+        @request-completed="emit('request-completed', $event)"
         @update:sort-column="currentSortColumn = $event"
         @update:sort-direction="currentSortDirection = $event"
     >

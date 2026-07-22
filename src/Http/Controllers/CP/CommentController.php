@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection as SupportCollection;
 use Statamic\CP\Columns;
 use Statamic\Facades\Action;
 use Statamic\Facades\Entry;
@@ -75,8 +76,7 @@ class CommentController extends CpController
             $query->orderBy($sortField, $sortDirection);
         }
 
-        $filters = is_array($request->filters) ? $request->filters : [];
-        $activeFilterBadges = $this->queryFilters($query, $filters, [
+        $activeFilterBadges = $this->queryFilters($query, $this->requestFilters($request), [
             'blueprints' => [$this->getBlueprint()->handle()],
         ]);
 
@@ -118,8 +118,7 @@ class CommentController extends CpController
 
         $query = $this->commentQueryForCurrentUser();
 
-        $filters = is_array($request->filters) ? $request->filters : [];
-        $this->queryFilters($query, $filters, [
+        $this->queryFilters($query, $this->requestFilters($request), [
             'blueprints' => [$this->getBlueprint()->handle()],
         ]);
 
@@ -637,6 +636,18 @@ class CommentController extends CpController
             'created_at' => 'comments.created_at',
             'updated_at' => 'comments.updated_at',
         ][$field] ?? null;
+    }
+
+    /** @return array<int|string, mixed> */
+    private function requestFilters(FilteredRequest $request): array
+    {
+        $filters = $request->filters;
+
+        if ($filters instanceof SupportCollection) {
+            return $filters->all();
+        }
+
+        return is_array($filters) ? $filters : [];
     }
 
     private function getSortDirection(): string
