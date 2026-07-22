@@ -12,7 +12,7 @@ Meerkat requires PHP 8.2 or newer and Statamic 6.24.2 or newer.
 
 ```shell
 composer require stillat/meerkat
-php please meerkat:install
+php artisan meerkat:install
 ```
 
 The install command publishes Meerkat's blueprint and migrations, then runs the migrations.
