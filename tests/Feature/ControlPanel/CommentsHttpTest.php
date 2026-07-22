@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Stillat\Meerkat\Tests\Feature\ControlPanel;
 
+use Illuminate\Support\Carbon;
 use LogicException;
 use PHPUnit\Framework\Attributes\Test;
 use Statamic\Facades\Collection;
@@ -134,6 +135,28 @@ class CommentsHttpTest extends TestCase
         $json->assertOk()->assertDownload();
         $this->assertStringStartsWith('application/json', (string) $json->headers->get('Content-Type'));
         $this->assertStringContainsString('.json', (string) $json->headers->get('content-disposition'));
+    }
+
+    #[Test]
+    public function exports_follow_the_requested_sort_order(): void
+    {
+        $this->actAsAdmin();
+
+        $older = CommentFactory::new()->threadId('cp-export-sort')->text('older')->published()->create([
+            'created_at' => Carbon::parse('2026-01-01 12:00:00'),
+        ]);
+        $newer = CommentFactory::new()->threadId('cp-export-sort')->text('newer')->published()->create([
+            'created_at' => Carbon::parse('2026-01-02 12:00:00'),
+        ]);
+
+        $response = $this->get(cp_route('meerkat.comments.export').'?format=json&sort=created_at&order=desc')
+            ->assertOk()
+            ->assertDownload();
+        $contents = $response->streamedContent() ?: (string) $response->getContent();
+        $payload = $this->requireObject(json_decode($contents, true, flags: JSON_THROW_ON_ERROR));
+        $comments = $this->requireRows($payload['comments']);
+
+        $this->assertSame([$newer->id, $older->id], array_column($comments, 'id'));
     }
 
     #[Test]

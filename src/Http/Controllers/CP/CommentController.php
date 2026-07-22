@@ -137,6 +137,11 @@ class CommentController extends CpController
         $isJson = request('format') === 'json';
 
         $exporter = $isJson ? new JsonExporter : new CsvExporter;
+        $sortField = $this->getSortField();
+
+        if ($sortField !== null) {
+            $query->orderBy($sortField, $this->getSortDirection());
+        }
 
         $exporter->setConfig([])
             ->setComments($query->orderBy('comments.id')->lazy());
