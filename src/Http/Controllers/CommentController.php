@@ -80,8 +80,6 @@ class CommentController
             collect(request()->all())->filter(fn ($value, $key) => Str::startsWith($key, '_'))->all()
         );
 
-        $commentData = [];
-
         try {
             $honeypot = $this->honeypot();
             if ($honeypot !== '' && $honeypot !== '0') {
@@ -157,10 +155,6 @@ class CommentController
 
             if ($authUser !== null) {
                 abort_unless($authUser->can('submit comments') === true, 403);
-
-                if ($parentComment != null) {
-                    $this->assertCanAccessComment($parentComment);
-                }
 
                 $this->ensureAuthorMetaDataExists($authUser);
 
@@ -279,7 +273,7 @@ class CommentController
         } catch (ValidationException $e) {
             return $this->formFailure($params, $this->validationErrors($e->errors()));
         } catch (SilentFormFailureException) {
-            return $this->formSuccess($params, $commentData, true);
+            return $this->formSuccess($params, true);
         }
 
         $payload = $this->runHooksWith('before-saving-comment', [
@@ -319,7 +313,7 @@ class CommentController
 
         SubmissionCreated::dispatch($statamicSubmission);
 
-        return $this->formSuccess($params, $commentData, false, $comment->id);
+        return $this->formSuccess($params, false, $comment->id);
     }
 
     /**
@@ -400,11 +394,9 @@ class CommentController
 
     /**
      * @param  array<string, mixed>  $params
-     * @param  array<string, mixed>  $comment
      */
     private function formSuccess(
         array $params,
-        array $comment,
         bool $silentFailure = false,
         ?int $commentId = null,
     ): RedirectResponse|Response {
@@ -414,7 +406,6 @@ class CommentController
             return response([
                 'success' => true,
                 'comment_created' => ! $silentFailure,
-                'comment' => $comment,
                 'comment_id' => $commentId,
                 'redirect' => $redirect,
             ]);
@@ -425,7 +416,6 @@ class CommentController
         if ($redirect === null || ! URL::isExternal($redirect)) {
             session()->flash('meerkat.success', __('meerkat::general.comment_submitted_successfully'));
             session()->flash('meerkat.submission_created', ! $silentFailure);
-            session()->flash('comment', $comment);
         }
 
         $urlHash = $this->getHashSuffix($commentId);
