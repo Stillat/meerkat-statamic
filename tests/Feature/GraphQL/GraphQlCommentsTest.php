@@ -36,6 +36,7 @@ class GraphQlCommentsTest extends TestCase
             'email' => ['type' => 'text', 'input_type' => 'email', 'display' => 'Email'],
             'website' => ['type' => 'text', 'input_type' => 'url', 'display' => 'Website'],
             'rating' => ['type' => 'integer', 'display' => 'Rating'],
+            'user_ip' => ['type' => 'text', 'display' => 'IP Address'],
         ]));
 
         config()->set('meerkat.form.blueprint', 'meerkat_gql');

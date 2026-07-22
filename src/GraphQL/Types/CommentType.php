@@ -11,6 +11,7 @@ use Rebing\GraphQL\Support\Type;
 use Statamic\Exceptions\BlueprintNotFoundException;
 use Statamic\Facades\GraphQL;
 use Stillat\Meerkat\Blueprints\CommentBlueprint;
+use Stillat\Meerkat\Comments\PublicCommentData;
 use Stillat\Meerkat\Database\Models\Comment;
 use Stillat\Meerkat\Support\CommentMarkdownRenderer;
 
@@ -36,7 +37,7 @@ class CommentType extends Type
     public function fields(): array
     {
         return $this->blueprintFields()
-            ->except(self::HANDLED_EXPLICITLY)
+            ->except([...self::HANDLED_EXPLICITLY, ...PublicCommentData::GUARDED_KEYS])
             ->map(fn (mixed $field): array => $this->fieldDefinition($field))
             ->merge($this->explicitFields())
             ->map(function (array $field): array {
