@@ -91,6 +91,37 @@ class CommentsHttpTest extends TestCase
     }
 
     #[Test]
+    public function index_sorts_by_resolved_authors_and_custom_blueprint_fields(): void
+    {
+        $this->actAsAdmin();
+
+        $zed = CommentFactory::new()
+            ->threadId('cp-sort-zed')
+            ->author('Zed', 'zed@example.com')
+            ->text('Zed comment')
+            ->data(['comment' => 'Zed comment', 'website' => 'https://alpha.example.com'])
+            ->published()
+            ->create();
+        $amy = CommentFactory::new()
+            ->threadId('cp-sort-amy')
+            ->author('Amy', 'amy@example.com')
+            ->text('Amy comment')
+            ->data(['comment' => 'Amy comment', 'website' => 'https://zulu.example.com'])
+            ->published()
+            ->create();
+
+        $byAuthor = $this->requireRows($this->getJson(
+            cp_route('meerkat.cp.comments.index').'?sort=name&order=asc',
+        )->assertOk()->json('data'));
+        $this->assertSame([$amy->id, $zed->id], array_column($byAuthor, 'id'));
+
+        $byWebsite = $this->requireRows($this->getJson(
+            cp_route('meerkat.cp.comments.index').'?sort=website&order=asc',
+        )->assertOk()->json('data'));
+        $this->assertSame([$zed->id, $amy->id], array_column($byWebsite, 'id'));
+    }
+
+    #[Test]
     public function thread_endpoint_returns_the_complete_moderation_tree(): void
     {
         $this->actAsAdmin();
