@@ -22,13 +22,13 @@ Route::prefix('meerkat')->group(function () {
     Route::post('actions/list', [CommentActionController::class, 'bulkActions'])->middleware('can:view comments')->name('meerkat.comments.actions.bulk');
 
     Route::prefix('comment')->group(function () {
-        Route::get('reply-data/{parent}', [CommentController::class, 'getReplyData'])->name('meerkat.comment.reply-data');
-        Route::post('reply/{parent}', [CommentController::class, 'submitReply'])->name('meerkat.comment.reply');
+        Route::get('reply-data/{parent}', [CommentController::class, 'getReplyData'])->where('parent', '[0-9]{1,18}')->name('meerkat.comment.reply-data');
+        Route::post('reply/{parent}', [CommentController::class, 'submitReply'])->where('parent', '[0-9]{1,18}')->name('meerkat.comment.reply');
 
-        Route::get('{id}', [CommentController::class, 'getCommentValues'])->name('meerkat.comment.get');
-        Route::get('{id}/history', [CommentController::class, 'getCommentHistory'])->name('meerkat.comment.history');
-        Route::get('{id}/revisions', [CommentController::class, 'getCommentRevisions'])->name('meerkat.comment.revisions');
-        Route::post('{id}/revisions/{revisionNumber}/restore', [CommentController::class, 'restoreCommentRevision'])->name('meerkat.comment.revision.restore');
-        Route::put('{id}', [CommentController::class, 'updateComment'])->name('meerkat.comment.update');
+        Route::get('{id}', [CommentController::class, 'getCommentValues'])->where('id', '[0-9]{1,18}')->name('meerkat.comment.get');
+        Route::get('{id}/history', [CommentController::class, 'getCommentHistory'])->where('id', '[0-9]{1,18}')->name('meerkat.comment.history');
+        Route::get('{id}/revisions', [CommentController::class, 'getCommentRevisions'])->where('id', '[0-9]{1,18}')->name('meerkat.comment.revisions');
+        Route::post('{id}/revisions/{revisionNumber}/restore', [CommentController::class, 'restoreCommentRevision'])->where('id', '[0-9]{1,18}')->where('revisionNumber', '[0-9]{1,9}')->name('meerkat.comment.revision.restore');
+        Route::put('{id}', [CommentController::class, 'updateComment'])->where('id', '[0-9]{1,18}')->name('meerkat.comment.update');
     });
 });

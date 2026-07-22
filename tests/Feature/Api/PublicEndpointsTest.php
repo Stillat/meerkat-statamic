@@ -36,6 +36,15 @@ class PublicEndpointsTest extends TestCase
     }
 
     #[Test]
+    public function out_of_range_numeric_comment_ids_return_404_not_500(): void
+    {
+        $this->seedThread('api-overflow', 1);
+
+        $this->getJson('/api/meerkat/threads/api-overflow/children/99999999999999999999')->assertNotFound();
+        $this->getJson('/api/meerkat/threads/api-overflow/children/abc')->assertNotFound();
+    }
+
+    #[Test]
     public function comments_endpoint_returns_only_the_requested_threads_published_comments(): void
     {
         $expected = $this->seedThread('api-comments', 3);

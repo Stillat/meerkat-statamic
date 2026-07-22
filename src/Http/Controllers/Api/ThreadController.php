@@ -45,7 +45,7 @@ class ThreadController extends Controller
     public function entryThread(Request $request, string $entryId, ThreadMetricsManager $metrics): JsonResponse
     {
         $this->ensureApiEnabled();
-        $entry = Entry::findOrFail($entryId);
+        $entry = $this->findEntryOrAbort($entryId);
 
         return $this->thread($request, $this->threads->forEntry($entry), $metrics);
     }
@@ -121,7 +121,7 @@ class ThreadController extends Controller
     public function entryComments(Request $request, string $entryId): JsonResponse
     {
         $this->ensureApiEnabled();
-        $entry = Entry::findOrFail($entryId);
+        $entry = $this->findEntryOrAbort($entryId);
 
         return $this->comments($request, $this->threads->forEntry($entry));
     }
@@ -146,7 +146,7 @@ class ThreadController extends Controller
     public function entryRoots(Request $request, string $entryId): AnonymousResourceCollection
     {
         $this->ensureApiEnabled();
-        $entry = Entry::findOrFail($entryId);
+        $entry = $this->findEntryOrAbort($entryId);
 
         return $this->roots($request, $this->threads->forEntry($entry));
     }
@@ -179,7 +179,7 @@ class ThreadController extends Controller
     public function entryStats(Request $request, string $entryId, ThreadMetricsManager $metrics): JsonResponse
     {
         $this->ensureApiEnabled();
-        $entry = Entry::findOrFail($entryId);
+        $entry = $this->findEntryOrAbort($entryId);
 
         return $this->stats($request, $this->threads->forEntry($entry), $metrics);
     }
@@ -267,6 +267,15 @@ class ThreadController extends Controller
     private function ensureApiEnabled(): void
     {
         abort_unless($this->apiEnabled(), 404);
+    }
+
+    private function findEntryOrAbort(string $entryId): \Statamic\Contracts\Entries\Entry
+    {
+        $entry = Entry::find($entryId);
+
+        abort_unless($entry !== null, 404);
+
+        return $entry;
     }
 
     private function resolveThreadId(string $threadId): string
