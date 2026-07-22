@@ -89,11 +89,13 @@ class ThreadController extends Controller
             $query = $relation->getQuery();
 
             if (! $includeUnpublished) {
-                $query->where('is_published', true)->where('is_spam', false);
+                $query->where('is_published', true);
+            }
 
-                if (! $includeRemoved) {
-                    $query->where('is_removed', false);
-                }
+            $query->where('is_spam', false);
+
+            if (! $includeRemoved) {
+                $query->where('is_removed', false);
             }
 
             if ($hidden !== []) {
@@ -320,13 +322,14 @@ class ThreadController extends Controller
         $query = Comments::query()->forThread($threadId);
 
         if (! $includeUnpublished) {
+            $query->published();
+        }
 
-            $query->published()->where('is_spam', false);
+        $query->where('is_spam', false);
 
-            if (! $includeRemoved) {
-                $query->where('comments.is_removed', false);
-                $this->visibility->excludeOrphanedSubtrees($query);
-            }
+        if (! $includeRemoved) {
+            $query->where('comments.is_removed', false);
+            $this->visibility->excludeOrphanedSubtrees($query);
         }
 
         if ($hidden !== []) {
