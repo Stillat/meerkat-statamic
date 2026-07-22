@@ -159,57 +159,60 @@ class SettingsBlueprint
                                                     'width' => 50,
                                                 ],
                                             ],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                        [
+                            'fields' => [
+                                [
+                                    'handle' => 'akismet',
+                                    'field' => [
+                                        'type' => 'group',
+                                        'full_width_setting' => true,
+
+                                        'border' => true,
+                                        'display' => __('meerkat::config.group_akismet'),
+                                        'fields' => [
                                             [
-                                                'handle' => 'akismet',
+                                                'handle' => 'enabled',
                                                 'field' => [
-                                                    'type' => 'group',
-                                                    'full_width_setting' => true,
+                                                    'type' => 'toggle',
+                                                    'default' => true,
+                                                    'display' => __('meerkat::config.akismet_enabled'),
+                                                    'instructions' => __('meerkat::config.akismet_enabled_instruct'),
+                                                    'width' => 50,
+                                                ],
+                                            ],
+                                            [
+                                                'handle' => 'api_key',
+                                                'field' => [
+                                                    'type' => 'text',
+                                                    'display' => __('meerkat::config.akismet_api_key'),
+                                                    'instructions' => __('meerkat::config.akismet_api_key_instruct'),
+                                                    'width' => 50,
 
-                                                    'border' => true,
-                                                    'display' => __('meerkat::config.group_akismet'),
-                                                    'fields' => [
-                                                        [
-                                                            'handle' => 'enabled',
-                                                            'field' => [
-                                                                'type' => 'toggle',
-                                                                'default' => true,
-                                                                'display' => __('meerkat::config.akismet_enabled'),
-                                                                'instructions' => __('meerkat::config.akismet_enabled_instruct'),
-                                                                'width' => 50,
-                                                            ],
-                                                        ],
-                                                        [
-                                                            'handle' => 'api_key',
-                                                            'field' => [
-                                                                'type' => 'text',
-                                                                'display' => __('meerkat::config.akismet_api_key'),
-                                                                'instructions' => __('meerkat::config.akismet_api_key_instruct'),
-                                                                'width' => 50,
-
-                                                                'validate' => 'required_if:{this}.enabled,true',
-                                                            ],
-                                                        ],
-                                                        [
-                                                            'handle' => 'blog_url',
-                                                            'field' => [
-                                                                'type' => 'text',
-                                                                'default' => '{{ config:app:url }}',
-                                                                'display' => __('meerkat::config.akismet_blog_url'),
-                                                                'instructions' => __('meerkat::config.akismet_blog_url_instruct'),
-                                                                'width' => 50,
-                                                            ],
-                                                        ],
-                                                        [
-                                                            'handle' => 'comment_type',
-                                                            'field' => [
-                                                                'type' => 'text',
-                                                                'default' => 'comment',
-                                                                'display' => __('meerkat::config.akismet_comment_type'),
-                                                                'instructions' => __('meerkat::config.akismet_comment_type_instruct'),
-                                                                'width' => 50,
-                                                            ],
-                                                        ],
-                                                    ],
+                                                    'validate' => 'required_if:{this}.enabled,true',
+                                                ],
+                                            ],
+                                            [
+                                                'handle' => 'blog_url',
+                                                'field' => [
+                                                    'type' => 'text',
+                                                    'display' => __('meerkat::config.akismet_blog_url'),
+                                                    'instructions' => __('meerkat::config.akismet_blog_url_instruct'),
+                                                    'width' => 50,
+                                                ],
+                                            ],
+                                            [
+                                                'handle' => 'comment_type',
+                                                'field' => [
+                                                    'type' => 'text',
+                                                    'default' => 'comment',
+                                                    'display' => __('meerkat::config.akismet_comment_type'),
+                                                    'instructions' => __('meerkat::config.akismet_comment_type_instruct'),
+                                                    'width' => 50,
                                                 ],
                                             ],
                                         ],
