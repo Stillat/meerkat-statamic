@@ -56,6 +56,17 @@ class CrossThreadTest extends TestCase
         $this->assertSame('2', trim($this->parseAntlers('{{ meerkat:comment_count thread="*" }}')));
     }
 
+    #[Test]
+    public function pipe_list_count_sums_every_selected_thread(): void
+    {
+        $this->comment('count-a', 'one');
+        $this->comment('count-a', 'two');
+        $this->comment('count-b', 'three');
+        $this->comment('count-c', 'not selected');
+
+        $this->assertSame('3', trim($this->parseAntlers('{{ meerkat:comment_count thread="count-a|count-b" }}')));
+    }
+
     private function comment(string $thread, string $text, string $collection = 'blog'): void
     {
         CommentFactory::new()->threadId($thread)->collection($collection)->text($text)->data(['comment' => $text])->published()->create();

@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Stillat\Meerkat\Tests\Feature\Forms;
 
 use PHPUnit\Framework\Attributes\Test;
+use Statamic\Statamic;
+use Statamic\Tags\FluentTag;
+use Stillat\Meerkat\Support\ContextSigner;
 use Stillat\Meerkat\Testing\Factories\CommentFactory;
 use Stillat\Meerkat\Tests\TestCase;
 
@@ -38,6 +41,26 @@ ANTLERS);
             $this->assertStringContainsString($contract, $output);
         }
         $this->assertDoesNotMatchRegularExpression('/<form[^>]*\s(?:from_thread|redirect|meerkat_jump)=/', $output);
+    }
+
+    #[Test]
+    public function fluent_fetch_mode_emits_the_signed_submission_context(): void
+    {
+        $this->createEntry(['id' => 'fetch-context']);
+
+        $tag = Statamic::tag('meerkat:form');
+
+        if (! $tag instanceof FluentTag) {
+            $this->fail('Expected a fluent tag instance.');
+        }
+
+        $result = $tag->param('from_thread', 'fetch-context')->fetch();
+
+        $this->assertIsArray($result);
+        $params = $result['params'] ?? null;
+        $this->assertIsArray($params);
+        $this->assertSame('fetch-context', $params['_meerkat_context'] ?? null);
+        $this->assertSame(ContextSigner::sign('fetch-context'), $params['_meerkat_context_signature'] ?? null);
     }
 
     #[Test]

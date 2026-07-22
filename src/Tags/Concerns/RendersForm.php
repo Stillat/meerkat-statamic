@@ -83,6 +83,12 @@ trait RendersForm
             $params['error_redirect'] = $this->parseRedirect($errorRedirect);
         }
 
+        $params['meerkat_context'] = $this->getThreadId();
+
+        if ($params['meerkat_context'] !== null && $params['meerkat_context'] !== '') {
+            $params['meerkat_context_signature'] = ContextSigner::sign((string) $params['meerkat_context']);
+        }
+
         if (! $this->params->has('data-meerkat-form')) {
             $this->params['data-meerkat-form'] = 'comment-form';
         }
@@ -98,12 +104,6 @@ trait RendersForm
         $afterOpen = $this->stringKeyedFormArray($this->runHooks('after-open', ['html' => $html, 'data' => $data]));
         $hookHtml = $afterOpen['html'] ?? null;
         $html = is_string($hookHtml) ? $hookHtml : $html;
-
-        $params['meerkat_context'] = $this->getThreadId();
-
-        if ($params['meerkat_context'] !== null && $params['meerkat_context'] !== '') {
-            $params['meerkat_context_signature'] = ContextSigner::sign((string) $params['meerkat_context']);
-        }
 
         $metaFields = $this->formMetaFields($params);
         $html .= is_string($metaFields) ? $metaFields : '';

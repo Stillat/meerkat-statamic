@@ -170,12 +170,19 @@ class Meerkat extends Tags
             return $query->count();
         }
 
-        $threadId = $selection[0] ?? null;
+        $count = 0;
 
-        if (! $threadId) {
-            return 0;
+        foreach ($selection as $threadId) {
+            if ($threadId !== '') {
+                $count += $this->countForThread($threadId, $site, $visibility);
+            }
         }
 
+        return $count;
+    }
+
+    private function countForThread(string $threadId, ?string $site, CommentVisibility $visibility): int
+    {
         if ($this->params->bool('include_unpublished', false) && $visibility->canViewModerationForThread($threadId)) {
             [$includeTombstones, $includeReplies] = $this->resolveTombstoneInclusion();
             $hidden = Comments::hiddenSubtreeIds($threadId, $includeTombstones, $includeReplies);

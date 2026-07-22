@@ -48,7 +48,7 @@ trait GetsComments
             $limit = null;
         }
 
-        if (($paginate > 0 || $limit !== null || $offset !== null) && ! $this->params->hasAny(['order_by', 'sort'])) {
+        if (! $this->params->hasAny(['order_by', 'sort'])) {
             $query->orderBy('comments.created_at', 'asc')->orderBy('comments.id', 'asc');
         }
 
