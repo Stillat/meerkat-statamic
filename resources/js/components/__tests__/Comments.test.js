@@ -103,3 +103,25 @@ describe('Comments — discard-changes confirmation', () => {
         expect(wrapper.find('[data-stub="ConfirmationModal"]').exists()).toBe(false);
     });
 });
+
+describe('Comments — exports', () => {
+    it('preserves the active listing parameters in export URLs', async () => {
+        const wrapper = makeWrapper();
+
+        wrapper.vm.handleListingRequestCompleted({
+            parameters: {
+                search: 'needle',
+                filters: 'encoded-filters',
+                page: 2,
+            },
+        });
+        await flushPromises();
+
+        const url = new URL(wrapper.vm.exportUrl('json'), window.location.origin);
+
+        expect(url.searchParams.get('search')).toBe('needle');
+        expect(url.searchParams.get('filters')).toBe('encoded-filters');
+        expect(url.searchParams.get('page')).toBe('2');
+        expect(url.searchParams.get('format')).toBe('json');
+    });
+});
