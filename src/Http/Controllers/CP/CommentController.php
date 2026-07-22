@@ -136,6 +136,11 @@ class CommentController extends CpController
         $isJson = request('format') === 'json';
 
         $exporter = $isJson ? new JsonExporter : new CsvExporter;
+        $sortField = $this->getSortField();
+
+        if ($sortField !== null) {
+            $query->orderBy($sortField, $this->getSortDirection());
+        }
 
         $exporter->setConfig([])
             ->setComments($query->orderBy('comments.id')->lazy());
@@ -611,31 +616,11 @@ class CommentController extends CpController
             return null;
         }
 
-        return [
-            'id' => 'comments.id',
-            'thread_id' => 'comments.thread_id',
-            'author_id' => 'comments.author_id',
-            'author_name' => 'comments.author_name',
-            'author_email' => 'comments.author_email',
-            'site' => 'comments.site',
-            'collection' => 'comments.collection',
-            'is_published' => 'comments.is_published',
-            'checked_for_spam' => 'comments.checked_for_spam',
-            'is_spam' => 'comments.is_spam',
-            'is_ham' => 'comments.is_ham',
-            'is_removed' => 'comments.is_removed',
-            'depth' => 'comments.depth',
-            'parent_id' => 'comments.parent_id',
-            'replies_count' => 'comments.replies_count',
-            'comment_text' => 'comments.comment_text',
-            'moderation_status' => 'comments.moderation_status',
-            'moderation_reason' => 'comments.moderation_reason',
-            'moderated_at' => 'comments.moderated_at',
-            'last_activity_at' => 'comments.last_activity_at',
-            'published_at' => 'comments.published_at',
-            'created_at' => 'comments.created_at',
-            'updated_at' => 'comments.updated_at',
-        ][$field] ?? null;
+        if (in_array($field, CommentQueryBuilder::COLUMNS, true)) {
+            return $field;
+        }
+
+        return $this->getBlueprint()->field($field) !== null ? $field : null;
     }
 
     /** @return array<int|string, mixed> */

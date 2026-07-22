@@ -135,7 +135,11 @@ class PublicEndpointsTest extends TestCase
     {
         $root = CommentFactory::new()->threadId('api-unpublished')->author('Root', 'root@example.com')->text('public root')->data(['comment' => 'public root'])->published()->create();
         $child = CommentFactory::new()->replyTo($root)->author('Child', 'child@example.com')->text('private child')->data(['comment' => 'private child'])->unpublished()->create();
+        $spamChild = CommentFactory::new()->replyTo($root)->text('spam child')->published()->spam()->create();
+        $removedChild = CommentFactory::new()->replyTo($root)->text('removed child')->published()->removed()->create();
         $privateRoot = CommentFactory::new()->threadId('api-unpublished')->author('Private', 'private@example.com')->text('private root')->data(['comment' => 'private root'])->unpublished()->create();
+        $spamRoot = CommentFactory::new()->threadId('api-unpublished')->text('spam root')->published()->spam()->create();
+        $removedRoot = CommentFactory::new()->threadId('api-unpublished')->text('removed root')->published()->removed()->create();
 
         $publicIds = array_column($this->requireRows($this->getJson('/api/meerkat/threads/api-unpublished/comments?include_unpublished=1')->assertOk()->json('comments')), 'id');
         $this->assertSame([$root->id], $publicIds);
@@ -143,6 +147,11 @@ class PublicEndpointsTest extends TestCase
         $this->actAsModerator();
         $privilegedIds = array_column($this->requireRows($this->getJson('/api/meerkat/threads/api-unpublished/comments?include_unpublished=1')->assertOk()->json('comments')), 'id');
         $this->assertEqualsCanonicalizing([$root->id, $child->id, $privateRoot->id], $privilegedIds);
+
+        $tombstoneIds = array_column($this->requireRows($this->getJson('/api/meerkat/threads/api-unpublished/comments?include_unpublished=1&include_tombstones=1&include_tombstone_replies=1')->assertOk()->json('comments')), 'id');
+        $this->assertEqualsCanonicalizing([$root->id, $child->id, $removedChild->id, $privateRoot->id, $removedRoot->id], $tombstoneIds);
+        $this->assertNotContains($spamChild->id, $tombstoneIds);
+        $this->assertNotContains($spamRoot->id, $tombstoneIds);
     }
 
     #[Test]

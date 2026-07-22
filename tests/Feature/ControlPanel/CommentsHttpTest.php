@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Stillat\Meerkat\Tests\Feature\ControlPanel;
 
+use Illuminate\Support\Carbon;
 use LogicException;
 use PHPUnit\Framework\Attributes\Test;
 use Statamic\Facades\Collection;
@@ -119,6 +120,37 @@ class CommentsHttpTest extends TestCase
     }
 
     #[Test]
+    public function index_sorts_by_resolved_authors_and_custom_blueprint_fields(): void
+    {
+        $this->actAsAdmin();
+
+        $zed = CommentFactory::new()
+            ->threadId('cp-sort-zed')
+            ->author('Zed', 'zed@example.com')
+            ->text('Zed comment')
+            ->data(['comment' => 'Zed comment', 'website' => 'https://alpha.example.com'])
+            ->published()
+            ->create();
+        $amy = CommentFactory::new()
+            ->threadId('cp-sort-amy')
+            ->author('Amy', 'amy@example.com')
+            ->text('Amy comment')
+            ->data(['comment' => 'Amy comment', 'website' => 'https://zulu.example.com'])
+            ->published()
+            ->create();
+
+        $byAuthor = $this->requireRows($this->getJson(
+            cp_route('meerkat.cp.comments.index').'?sort=name&order=asc',
+        )->assertOk()->json('data'));
+        $this->assertSame([$amy->id, $zed->id], array_column($byAuthor, 'id'));
+
+        $byWebsite = $this->requireRows($this->getJson(
+            cp_route('meerkat.cp.comments.index').'?sort=website&order=asc',
+        )->assertOk()->json('data'));
+        $this->assertSame([$zed->id, $amy->id], array_column($byWebsite, 'id'));
+    }
+
+    #[Test]
     public function thread_endpoint_returns_the_complete_moderation_tree(): void
     {
         $this->actAsAdmin();
@@ -191,6 +223,28 @@ class CommentsHttpTest extends TestCase
 
         $this->assertStringContainsString('included export marker', $contents);
         $this->assertStringNotContainsString('excluded export marker', $contents);
+    }
+
+    #[Test]
+    public function exports_follow_the_requested_sort_order(): void
+    {
+        $this->actAsAdmin();
+
+        $older = CommentFactory::new()->threadId('cp-export-sort')->text('older')->published()->create([
+            'created_at' => Carbon::parse('2026-01-01 12:00:00'),
+        ]);
+        $newer = CommentFactory::new()->threadId('cp-export-sort')->text('newer')->published()->create([
+            'created_at' => Carbon::parse('2026-01-02 12:00:00'),
+        ]);
+
+        $response = $this->get(cp_route('meerkat.comments.export').'?format=json&sort=created_at&order=desc')
+            ->assertOk()
+            ->assertDownload();
+        $contents = $response->streamedContent() ?: (string) $response->getContent();
+        $payload = $this->requireObject(json_decode($contents, true, flags: JSON_THROW_ON_ERROR));
+        $comments = $this->requireRows($payload['comments']);
+
+        $this->assertSame([$newer->id, $older->id], array_column($comments, 'id'));
     }
 
     #[Test]
