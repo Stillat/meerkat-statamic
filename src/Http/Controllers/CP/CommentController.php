@@ -54,9 +54,17 @@ class CommentController extends CpController
         Hookable,
         QueriesFilters;
 
-    private function commentQueryForCurrentUser(): CommentQueryBuilder
+    private function commentQueryForCurrentUser(bool $forListing = false): CommentQueryBuilder
     {
-        $query = Comments::query();
+        $query = Comments::query()
+            ->where('comments.is_removed', false);
+
+        if ($forListing) {
+            $query->with([
+                'parent',
+                'children:id,parent_id',
+            ]);
+        }
 
         app(CommentVisibility::class)->applyAccessibleScope($query, $this->getPermissions());
 
@@ -70,7 +78,7 @@ class CommentController extends CpController
         $sortField = $this->getSortField();
         $sortDirection = $this->getSortDirection();
 
-        $query = $this->commentQueryForCurrentUser();
+        $query = $this->commentQueryForCurrentUser(forListing: true);
 
         if ($sortField) {
             $query->orderBy($sortField, $sortDirection);
@@ -367,7 +375,11 @@ class CommentController extends CpController
 
         $query = Comment::query()
             ->where('comments.thread_id', $threadId)
-            ->with('userMeta')
+            ->where('comments.is_removed', false)
+            ->with([
+                'children:id,parent_id',
+                'userMeta',
+            ])
             ->orderBy('comments.visual_path');
 
         app(CommentVisibility::class)->applyAccessibleScope($query, $this->getPermissions());

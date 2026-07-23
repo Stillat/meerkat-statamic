@@ -7,6 +7,7 @@ namespace Stillat\Meerkat\Tests\Feature\ControlPanel;
 use Illuminate\Support\Carbon;
 use LogicException;
 use PHPUnit\Framework\Attributes\Test;
+use Statamic\Actions\Action;
 use Statamic\Facades\Collection;
 use Statamic\Facades\User;
 use Statamic\Hooks\Payload;
@@ -14,6 +15,7 @@ use Stillat\Meerkat\Blueprints\CommentBlueprint;
 use Stillat\Meerkat\Database\Models\Comment;
 use Stillat\Meerkat\Database\Models\CommentModerationAudit;
 use Stillat\Meerkat\Database\Models\CommentRevision;
+use Stillat\Meerkat\Facades\Comments;
 use Stillat\Meerkat\Http\Controllers\CP\CommentController as CpCommentController;
 use Stillat\Meerkat\Http\Resources\Comments\CommentResource;
 use Stillat\Meerkat\Testing\Factories\CommentFactory;
@@ -43,6 +45,112 @@ class CommentsHttpTest extends TestCase
 
         $page->assertJsonStructure(['data', 'meta']);
         $this->assertCount(2, $this->requireList($page->json('data')));
+    }
+
+    #[Test]
+    public function index_hides_recoverable_tombstones(): void
+    {
+        $this->actAsAdmin();
+
+        $visible = $this->comment('cp-index-tombstones', 'Visible', 'visible body');
+        $removed = $this->comment('cp-index-tombstones', 'Removed', 'removed body');
+
+        $this->assertTrue(Comments::deleteComment($removed->id));
+
+        $rows = $this->requireRows($this->getJson(
+            cp_route('meerkat.cp.comments.index'),
+        )->assertOk()->json('data'));
+
+        $this->assertSame([$visible->id], array_column($rows, 'id'));
+        $this->assertTrue($removed->fresh()?->is_removed);
+    }
+
+    #[Test]
+    public function index_returns_a_compact_thread_summary(): void
+    {
+        $this->actAsAdmin();
+
+        $entry = $this->createEntry([
+            'id' => 'cp-thread-summary',
+            'slug' => 'cp-thread-summary',
+            'title' => 'Compact thread',
+            'content' => str_repeat('Large entry content. ', 100),
+        ]);
+        $comment = $this->comment($entry->id(), 'Author', 'summary body');
+
+        $row = $this->requireObject($this->getJson(
+            cp_route('meerkat.cp.comments.index'),
+        )->assertOk()->json('data.0'));
+        $thread = $this->requireObject($row['thread']);
+
+        $this->assertSame($comment->id, $row['id']);
+        $this->assertSame([
+            'id',
+            'title',
+            'permalink',
+            'url',
+        ], array_keys($thread));
+        $this->assertSame($entry->id(), $thread['id']);
+        $this->assertSame('Compact thread', $thread['title']);
+        $this->assertArrayNotHasKey('content', $thread);
+    }
+
+    #[Test]
+    public function thread_endpoint_hides_recoverable_tombstones(): void
+    {
+        $this->actAsAdmin();
+
+        $root = $this->comment('cp-thread-tombstones', 'Root', 'root body');
+        $removed = CommentFactory::new()
+            ->threadId('cp-thread-tombstones')
+            ->parent($root->id)
+            ->depth(1)
+            ->author('Removed', 'removed@example.com')
+            ->text('removed body')
+            ->published()
+            ->create();
+
+        $this->assertTrue(Comments::deleteComment($removed->id));
+
+        $rows = $this->requireRows($this->getJson(
+            cp_route('meerkat.comments.thread', ['threadId' => 'cp-thread-tombstones']),
+        )->assertOk()->json('comments'));
+
+        $this->assertSame([$root->id], array_column($rows, 'id'));
+        $this->assertTrue($removed->fresh()?->is_removed);
+    }
+
+    #[Test]
+    public function index_keeps_custom_action_payloads_dynamic_per_comment(): void
+    {
+        $this->actAsAdmin();
+        DynamicCommentAction::register();
+
+        $first = $this->comment('cp-dynamic-actions', 'First', 'first body');
+        $second = $this->comment('cp-dynamic-actions', 'Second', 'second body');
+
+        $rows = collect($this->requireRows($this->getJson(
+            cp_route('meerkat.cp.comments.index'),
+        )->assertOk()->json('data')))->keyBy('id');
+        $dynamicActionHandle = DynamicCommentAction::handle();
+
+        if (! is_string($dynamicActionHandle)) {
+            throw new LogicException('Expected the dynamic action handle to be a string.');
+        }
+
+        foreach ([$first, $second] as $comment) {
+            $commentId = $comment->getKey();
+
+            if (! is_int($commentId)) {
+                throw new LogicException('Expected the comment ID to be an integer.');
+            }
+
+            $row = $this->requireObject($rows->get($commentId));
+            $actions = collect($this->requireRows($row['actions']))->keyBy('handle');
+            $action = $this->requireObject($actions->get($dynamicActionHandle));
+
+            $this->assertSame($commentId, $action['comment_id']);
+        }
     }
 
     #[Test]
@@ -414,5 +522,39 @@ class CommentsHttpTest extends TestCase
     private function encodedFilters(array $filters): string
     {
         return base64_encode(json_encode($filters, JSON_THROW_ON_ERROR));
+    }
+}
+
+class DynamicCommentAction extends Action
+{
+    public static function title(): string
+    {
+        return 'Dynamic comment action';
+    }
+
+    /** @param mixed $item */
+    public function visibleTo($item): bool
+    {
+        return $item instanceof Comment;
+    }
+
+    /** @return array<string, mixed> */
+    public function toArray(): array
+    {
+        $parentValues = parent::toArray();
+        $values = [];
+
+        foreach ($parentValues as $key => $value) {
+            if (is_string($key)) {
+                $values[$key] = $value;
+            }
+        }
+
+        $comment = $this->items instanceof \Illuminate\Support\Collection
+            ? $this->items->first()
+            : null;
+        $values['comment_id'] = $comment instanceof Comment ? $comment->id : null;
+
+        return $values;
     }
 }

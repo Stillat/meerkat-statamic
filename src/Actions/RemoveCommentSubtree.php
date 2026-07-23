@@ -54,7 +54,16 @@ class RemoveCommentSubtree extends Action
         return $item instanceof Comment
             && $this->authorize(auth()->user(), $item)
             && ! (bool) $item->is_removed
-            && $item->children()->exists();
+            && $this->hasChildren($item);
+    }
+
+    private function hasChildren(Comment $comment): bool
+    {
+        if ($comment->relationLoaded('children')) {
+            return $comment->children->isNotEmpty();
+        }
+
+        return $comment->children()->exists();
     }
 
     /**

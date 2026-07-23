@@ -62,6 +62,10 @@ abstract class ListedResource extends JsonResource
                 return [$key => $value];
             }
 
+            if (! $this->shouldPreProcessIndex($key)) {
+                return [$key => $value];
+            }
+
             $field->setValue($value);
             $field->setParent($this->resource);
             $field->preProcessIndex();
@@ -69,6 +73,11 @@ abstract class ListedResource extends JsonResource
 
             return [$key => $value];
         });
+    }
+
+    protected function shouldPreProcessIndex(string $key): bool
+    {
+        return true;
     }
 
     protected function valueFor(string $key): mixed
