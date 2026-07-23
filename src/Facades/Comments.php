@@ -27,7 +27,7 @@ use Stillat\Meerkat\Database\Models\Comment;
  * @method static void checkForSpam(int $id)
  * @method static void checkOutstandingForSpam()
  * @method static Comment inReplyTo(Comment $parent)
- * @method static Entry getCommentEntry(Comment $comment)
+ * @method static Entry|null getCommentEntry(Comment $comment)
  * @method static list<array<string, mixed>> thread(string $threadId, bool $publishedOnly = true)
  * @method static \Statamic\Extensions\Pagination\LengthAwarePaginator rootsForThread(string $threadId, int $perPage = 15, bool $publishedOnly = true)
  * @method static list<array<string, mixed>> userHistory(string|int $identifier, int $limit = 50)
