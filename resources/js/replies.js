@@ -246,7 +246,7 @@
 
             cancelLinks.forEach(function (el) {
                 el.addEventListener('click', function (event) {
-                    let meerkatForm = MeerkatForms.findClosest(event.target, '[data-meerkat-form]');
+                    let meerkatForm = MeerkatForms.findClosest(el, 'form[data-meerkat-form]');
 
                     if (typeof meerkatForm !== 'undefined' && meerkatForm !== null) {
                         let idsInput = meerkatForm.querySelectorAll('[name=ids]')[0];
