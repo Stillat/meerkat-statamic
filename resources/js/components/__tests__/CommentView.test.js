@@ -75,6 +75,20 @@ describe('CommentView — permission-gated rendering', () => {
         expect(wrapper.findAll('[data-comment-id]')).toHaveLength(3);
     });
 
+    it('constrains long author metadata while retaining its full value in a title', () => {
+        const author = {
+            ...makeComment().author,
+            name: 'Totally Real Growth Expert',
+            email: 'totally.real.growth.expert@marketplace.invalid',
+        };
+        const wrapper = makeWrapper({ items: [makeComment({ author })] });
+        const name = wrapper.find('.meerkat-comment-row__author-name');
+        const email = wrapper.find('.meerkat-comment-row__author-email');
+
+        expect(name.attributes('title')).toBe(author.name);
+        expect(email.attributes('title')).toBe(author.email);
+    });
+
     it('shows the Reply button when the user can submit comments', () => {
         const wrapper = makeWrapper({ permissions: { can_submit_comments: true } });
         expect(wrapper.find('[data-test="comment-reply-button"]').exists()).toBe(true);
@@ -124,6 +138,7 @@ describe('CommentView — entry link', () => {
         const link = wrapper.find('a[href]');
         expect(link.exists()).toBe(true);
         expect(link.attributes('href')).toBe('https://example.com/blog/post#comment-42');
+        expect(wrapper.find('[data-test="comment-thread-title"]').attributes('title')).toBe('Blog Post');
     });
 
     it('falls back to thread.url when permalink is absent and still adds the fragment', () => {

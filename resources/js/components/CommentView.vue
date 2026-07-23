@@ -302,12 +302,14 @@ defineExpose({
                             <Avatar :user="comment.author" class="size-10!" />
                             <div class="meerkat-comment-row__author-text">
                                 <div
-                                    class="text-sm font-medium text-gray-900 dark:text-gray-200 break-words"
+                                    class="meerkat-comment-row__author-name text-sm font-medium text-gray-900 dark:text-gray-200"
+                                    :title="comment.author.name"
                                     v-text="comment.author.name"
                                 />
                                 <div
                                     v-if="comment.author.email"
-                                    class="text-xs text-gray-500 dark:text-gray-400 break-words"
+                                    class="meerkat-comment-row__author-email text-xs text-gray-500 dark:text-gray-400"
+                                    :title="comment.author.email"
                                     v-text="comment.author.email"
                                 />
                                 <div
@@ -322,12 +324,12 @@ defineExpose({
                         </header>
 
                         <div class="meerkat-comment-row__main text-gray-900 dark:text-gray-200">
-                            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
-                                <span v-if="comment.thread" class="inline-flex items-center gap-1">
+                            <div class="meerkat-comment-row__meta flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                                <span v-if="comment.thread" class="meerkat-comment-row__thread inline-flex items-center gap-1">
                                     <button
                                         type="button"
-                                        class="hover:text-gray-900 dark:hover:text-gray-200 hover:underline text-start"
-                                        :title="__('meerkat::general.view_thread')"
+                                        class="meerkat-comment-row__thread-title hover:text-gray-900 dark:hover:text-gray-200 hover:underline text-start"
+                                        :title="entryTitle(comment.thread) || comment.thread.id"
                                         data-test="comment-thread-title"
                                         @click="emit('view-thread', comment)"
                                     >

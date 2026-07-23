@@ -149,14 +149,6 @@
     padding: 10px;
 }
 
-.meerkat__author-name,
-.meerkat__author-email {
-    max-width: 20ch;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
 .meerkat__comment-actions {
     opacity: 0.6;
 }
@@ -189,9 +181,20 @@
 
 .meerkat-comment-row__author-text {
     display: flex;
+    flex: 1 1 auto;
     flex-direction: column;
     gap: 0.125rem;
     min-width: 0;
+    overflow: hidden;
+}
+
+.meerkat-comment-row__author-name,
+.meerkat-comment-row__author-email {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .meerkat-comment-row__main {
@@ -199,6 +202,21 @@
     flex-direction: column;
     gap: 0.5rem;
     min-width: 0;
+}
+
+.meerkat-comment-row__meta {
+    min-width: 0;
+}
+
+.meerkat-comment-row__thread {
+    max-width: 100%;
+    min-width: 0;
+}
+
+.meerkat-comment-row__thread-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .meerkat-reply-enter-active,
