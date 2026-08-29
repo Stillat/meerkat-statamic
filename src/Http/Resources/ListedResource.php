@@ -41,8 +41,8 @@ abstract class ListedResource extends JsonResource
     public function toArray(Request $request): array|Arrayable
     {
         return [
-            $this->merge($this->values($request)),
             $this->merge($this->resourceValues()),
+            $this->merge($this->values($request)),
         ];
     }
 
@@ -68,8 +68,11 @@ abstract class ListedResource extends JsonResource
 
             $field->setValue($value);
             $field->setParent($this->resource);
-            $field->preProcessIndex();
-            $value = $field->value();
+            $preProcessed = $field->preProcessIndex();
+
+            $value = $preProcessed instanceof Field
+                ? $preProcessed->value()
+                : $preProcessed;
 
             return [$key => $value];
         });
