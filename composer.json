@@ -38,7 +38,7 @@
         "phpstan/phpstan": "^2.1",
         "larastan/larastan": "^3.9",
         "phpstan/extension-installer": "^1.4",
-        "rector/rector": "^2.4",
+        "rector/rector": "~2.5.7",
         "driftingly/rector-laravel": "^2.3",
         "brianium/paratest": "~7.8.5"
     },
