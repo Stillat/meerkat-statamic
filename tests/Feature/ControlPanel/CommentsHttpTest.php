@@ -96,6 +96,44 @@ class CommentsHttpTest extends TestCase
     }
 
     #[Test]
+    public function index_preprocesses_relationship_columns_for_statamics_listing_fieldtypes(): void
+    {
+        $this->actAsAdmin();
+
+        $entry = $this->createEntry([
+            'id' => '0198f017-f627-71dd-bef7-18f90a749f36',
+            'slug' => 'relationship-column-entry',
+            'title' => 'Relationship column entry',
+        ]);
+        $authorId = 'relationship-column-author';
+        $author = $this->makeStatamicUser();
+        $author->id($authorId);
+        $author->email('relationship-column-author@example.com');
+        $author->data(['name' => 'Relationship Column Author']);
+        $author->save();
+
+        $comment = CommentFactory::new()
+            ->threadId($entry->id())
+            ->collection('blog')
+            ->authenticatedAuthor($authorId)
+            ->text('Relationship column body')
+            ->data(['comment' => 'Relationship column body'])
+            ->published()
+            ->create();
+
+        $row = $this->requireObject($this->getJson(
+            cp_route('meerkat.cp.comments.index').'?columns=thread_id,author_id,collection,site',
+        )->assertOk()->json('data.0'));
+
+        $this->assertSame($comment->id, $row['id']);
+        $this->assertSame([$entry->id()], array_column($this->requireRows($row['thread_id']), 'id'));
+        $this->assertSame([$authorId], array_column($this->requireRows($row['author_id']), 'id'));
+        $this->assertSame(['blog'], array_column($this->requireRows($row['collection']), 'id'));
+        $this->assertIsString($row['site']);
+        $this->assertNotSame('default', $row['site']);
+    }
+
+    #[Test]
     public function thread_endpoint_hides_recoverable_tombstones(): void
     {
         $this->actAsAdmin();

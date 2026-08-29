@@ -208,11 +208,6 @@ class CommentResource extends ListedResource
         ];
     }
 
-    protected function shouldPreProcessIndex(string $key): bool
-    {
-        return ! in_array($key, ['thread_id', 'author_id'], true);
-    }
-
     private function snippet(?string $text, int $length = 80): string
     {
         $text = trim((string) $text);
